@@ -19,8 +19,6 @@ done
 
 RELEASE_BASE="${ZVM_RELEASE_BASE:-https://git.xeondev.com/nyan/zvm/releases/download/latest}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 os="linux"
 arch="$(uname -m)"
 case "$arch" in
@@ -44,6 +42,7 @@ bin_dir="$zvm_home/bin"
 mkdir -p "$bin_dir"
 
 if [ "$build_from_source" = "1" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   zon_path="$SCRIPT_DIR/build.zig.zon"
   if [ ! -f "$zon_path" ]; then
     echo "error: --build requires running this script from a checkout of the zvm repository." >&2
@@ -121,12 +120,12 @@ case ":$PATH:" in
       if [[ "$profile" == *fish* ]]; then
         printf '\nfish_add_path %q\n' "$bin_dir" >>"$profile"
       else
-        printf '\nexport PATH="%q:$PATH"\n' "$bin_dir" >>"$profile"
+        printf '\nexport PATH=%q:"$PATH"\n' "$bin_dir" >>"$profile"
       fi
       echo "Added to $profile. Restart your shell (or run: source $profile) to pick it up."
     else
       echo "Skipped. Add this to your shell config manually:"
-      echo "  export PATH=\"$bin_dir:\$PATH\""
+      printf '  export PATH=%q:"$PATH"\n' "$bin_dir"
     fi
     ;;
 esac

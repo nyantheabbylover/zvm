@@ -17,8 +17,6 @@ $ReleaseBase = if ($env:ZVM_RELEASE_BASE) {
     "https://git.xeondev.com/nyan/zvm/releases/download/latest"
 }
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_IDENTIFIER -like "*ARM*") {
     "aarch64"
 } else {
@@ -31,6 +29,7 @@ $binDir = Join-Path $zvmHome "bin"
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
 if ($Build) {
+    $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $zonPath = Join-Path $ScriptDir "build.zig.zon"
     if (-not (Test-Path $zonPath)) {
         Write-Error "-Build requires running this script from a checkout of the zvm repository."
@@ -118,15 +117,15 @@ if ($pathEntries -contains $binDir) {
     }
 
     if ($null -eq $answer) {
-        Write-Host "Add this to your PATH manually:"
-        Write-Host "  setx PATH `"%PATH%;$binDir`""
+        Write-Host "Run this PowerShell command to add zvm to your user PATH:"
+        Write-Host "  `$zvmBin = Join-Path `$env:LOCALAPPDATA 'zvm\bin'; `$userPath = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', `"`$zvmBin;`$userPath`", 'User')"
     } elseif ([string]::IsNullOrWhiteSpace($answer) -or $answer -match '^[Yy]') {
         $newPath = if ($userPath) { "$binDir;$userPath" } else { $binDir }
         [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
         Write-Host "Added. Open a new terminal to pick it up."
     } else {
-        Write-Host "Skipped. Add this manually:"
-        Write-Host "  setx PATH `"%PATH%;$binDir`""
+        Write-Host "Skipped. Run this PowerShell command to add zvm to your user PATH:"
+        Write-Host "  `$zvmBin = Join-Path `$env:LOCALAPPDATA 'zvm\bin'; `$userPath = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', `"`$zvmBin;`$userPath`", 'User')"
     }
 }
 
