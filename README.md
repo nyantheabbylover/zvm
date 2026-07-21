@@ -73,7 +73,7 @@ really need to bypass verification.
 
 ```sh
 # Linux
-curl -fsSL https://git.xeondev.com/nyan/zvm/raw/branch/main/install.sh | bash
+curl -fsSL https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | sh
 ```
 
 ```powershell
@@ -81,14 +81,15 @@ curl -fsSL https://git.xeondev.com/nyan/zvm/raw/branch/main/install.sh | bash
 irm https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | iex
 ```
 
-They install `zig` and `zvm` into zvm's `bin` directory and offer to add that
-directory to your PATH.
+Both commands use the same cross-platform installer. It installs `zig` and
+`zvm` into zvm's `bin` directory and offers to add that directory to your
+PATH.
 
 If you would rather build from a checkout:
 
 ```sh
 # Linux
-./install.sh --build
+./install.ps1 --build
 ```
 
 ```powershell

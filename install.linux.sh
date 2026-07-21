@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Installs zvm: downloads a prebuilt release by default.
 # Pass --build to build from source instead, that requires running this
-# script from a local checkout of the repo (not the curl | bash one-liner,
+# script from a local checkout of the repo (not the curl | sh one-liner,
 # since there's no source tree to build in that case) and a zig compiler
 # matching this project's pinned version already on PATH.
-set -euo pipefail
+set -eu
 
 build_from_source=0
 for arg in "$@"; do
@@ -42,7 +42,7 @@ bin_dir="$zvm_home/bin"
 mkdir -p "$bin_dir"
 
 if [ "$build_from_source" = "1" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
   zon_path="$SCRIPT_DIR/build.zig.zon"
   if [ ! -f "$zon_path" ]; then
     echo "error: --build requires running this script from a checkout of the zvm repository." >&2
@@ -82,8 +82,8 @@ else
   mkdir -p "$tmp/extracted"
   tar -xf "$tmp/zvm.tar.xz" -C "$tmp/extracted"
 
-  zig_bin="$(find "$tmp/extracted" -type f -name 'zig' | head -1)"
-  zvm_bin="$(find "$tmp/extracted" -type f -name 'zvm' | head -1)"
+  zig_bin="$(find "$tmp/extracted" -type f -name 'zig' | head -n 1)"
+  zvm_bin="$(find "$tmp/extracted" -type f -name 'zvm' | head -n 1)"
   if [ -z "$zig_bin" ] || [ -z "$zvm_bin" ]; then
     echo "error: release archive didn't contain both 'zig' and 'zvm' binaries." >&2
     exit 1
@@ -102,30 +102,57 @@ case ":$PATH:" in
     echo "$bin_dir is already on your PATH."
     ;;
   *)
-    profile="$HOME/.profile"
+    profile=""
+    supported_shell=1
+
     case "${SHELL:-}" in
       */zsh) profile="$HOME/.zshrc" ;;
       */bash) profile="$HOME/.bashrc" ;;
       */fish) profile="$HOME/.config/fish/config.fish" ;;
+      *) supported_shell=0 ;;
     esac
 
-    reply="n"
-    if [ -t 0 ]; then
-      echo
-      read -r -p "Add $bin_dir to PATH in $profile? [Y/n] " reply
-      reply="${reply:-Y}"
-    fi
-
-    if [[ "$reply" =~ ^[Yy] ]]; then
-      if [[ "$profile" == *fish* ]]; then
-        printf '\nfish_add_path %q\n' "$bin_dir" >>"$profile"
+    if [ "$supported_shell" = "0" ]; then
+      if [ -n "${SHELL:-}" ]; then
+      	shell_name="${SHELL##*/}"
+        echo "Your shell ($shell_name) is not supported for automatic PATH setup."
       else
-        printf '\nexport PATH=%q:"$PATH"\n' "$bin_dir" >>"$profile"
+        echo "Your shell could not be identified, so PATH was not changed."
       fi
-      echo "Added to $profile. Restart your shell (or run: source $profile) to pick it up."
+      echo "For a POSIX-compatible shell, add this to its configuration manually:"
+      quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
+      printf '  export PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir"
     else
-      echo "Skipped. Add this to your shell config manually:"
-      printf '  export PATH=%q:"$PATH"\n' "$bin_dir"
+      reply="n"
+      interactive_terminal=0
+      if [ -t 1 ] && printf '\nAdd %s to PATH in %s? [Y/n] ' "$bin_dir" "$profile" >/dev/tty && read -r reply </dev/tty; then
+        reply="${reply:-Y}"
+        interactive_terminal=1
+      fi
+
+      case "$reply" in
+        [Yy]*)
+        mkdir -p "$(dirname "$profile")"
+        if [ "${profile##*fish}" != "$profile" ]; then
+          escaped_bin_dir="$(printf '%s' "$bin_dir" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')"
+          printf '\nfish_add_path "%s"\n' "$escaped_bin_dir" >>"$profile"
+        else
+          quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
+          printf '\nexport PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir" >>"$profile"
+        fi
+        echo "Added to $profile. Restart your shell to pick it up."
+        ;;
+        *)
+        if [ "$interactive_terminal" = "1" ]; then
+          echo "Skipped. Add this to your shell config manually:"
+        else
+          echo "No interactive terminal was available, so PATH was not changed."
+          echo "Add this to your shell config manually:"
+        fi
+        quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
+        printf '  export PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir"
+        ;;
+      esac
     fi
     ;;
 esac
