@@ -85,6 +85,10 @@ Both commands use the same cross-platform installer. It installs `zig` and
 `zvm` into zvm's `bin` directory and offers to add that directory to your
 PATH.
 
+If zvm is already on your PATH and matches the latest release, the installer
+does nothing. To reinstall it anyway, use `./install.ps1 --force` on Linux or
+`.\install.ps1 -Force` on Windows from a local checkout.
+
 If you would rather build from a checkout:
 
 ```sh

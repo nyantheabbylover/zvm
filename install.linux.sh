@@ -7,9 +7,11 @@
 set -eu
 
 build_from_source=0
+force=0
 for arg in "$@"; do
   case "$arg" in
     --build) build_from_source=1 ;;
+    --force) force=1 ;;
     *)
       echo "error: unknown argument: $arg" >&2
       exit 1
@@ -18,6 +20,7 @@ for arg in "$@"; do
 done
 
 RELEASE_BASE="${ZVM_RELEASE_BASE:-https://git.xeondev.com/nyan/zvm/releases/download/latest}"
+RELEASE_API="${ZVM_RELEASE_API:-https://git.xeondev.com/api/v1/repos/nyan/zvm/releases/latest}"
 
 os="linux"
 arch="$(uname -m)"
@@ -51,6 +54,14 @@ if [ "$build_from_source" = "1" ]; then
   fi
 
   required="$(sed -n 's/.*minimum_zig_version = "\([^"]*\)".*/\1/p' "$zon_path")"
+  zvm_version="$(sed -n 's/.*\.version = "\([^"]*\)".*/\1/p' "$zon_path")"
+
+  if [ "$force" = "0" ] && command -v zvm >/dev/null 2>&1; then
+    if installed_version="$(zvm version 2>/dev/null)" && [ "$installed_version" = "$zvm_version" ]; then
+      echo "zvm $installed_version is already installed"
+      exit 0
+    fi
+  fi
 
   if ! command -v zig >/dev/null 2>&1; then
     echo "error: zig is not installed, or not on PATH." >&2
@@ -71,6 +82,19 @@ if [ "$build_from_source" = "1" ]; then
   cp "$SCRIPT_DIR/zig-out/bin/zig" "$bin_dir/zig"
   cp "$SCRIPT_DIR/zig-out/bin/zvm" "$bin_dir/zvm"
 else
+  if [ "$force" = "0" ] && command -v zvm >/dev/null 2>&1; then
+    if release_json="$(curl -fsSL "$RELEASE_API" 2>/dev/null)"; then
+      remote_tag="$(printf '%s\n' "$release_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+      remote_version="${remote_tag#v}"
+      if installed_version="$(zvm version 2>/dev/null)" && [ -n "$remote_version" ] && [ "$installed_version" = "$remote_version" ]; then
+        echo "zvm $installed_version is already installed"
+        exit 0
+      fi
+    else
+      echo "warning: could not check the latest zvm release, continuing with installation" >&2
+    fi
+  fi
+
   url="$RELEASE_BASE/zvm-$target.tar.xz"
 
   tmp="$(mktemp -d)"

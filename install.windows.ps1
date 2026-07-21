@@ -6,7 +6,8 @@
 # works from a local checkout (for example, .\install.ps1 -Build); it can't be
 # passed through the piped irm | iex form.
 param(
-    [switch]$Build
+    [switch]$Build,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,24 @@ $ReleaseBase = if ($env:ZVM_RELEASE_BASE) {
     $env:ZVM_RELEASE_BASE
 } else {
     "https://git.xeondev.com/nyan/zvm/releases/download/latest"
+}
+$ReleaseApi = if ($env:ZVM_RELEASE_API) {
+    $env:ZVM_RELEASE_API
+} else {
+    "https://git.xeondev.com/api/v1/repos/nyan/zvm/releases/latest"
+}
+
+function Get-InstalledZvmVersion {
+    if (-not (Get-Command zvm -ErrorAction SilentlyContinue)) {
+        return $null
+    }
+
+    $version = [string](& zvm version 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    return $version.Trim()
 }
 
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_IDENTIFIER -like "*ARM*") {
@@ -41,6 +60,19 @@ if ($Build) {
     $zonContent = Get-Content $zonPath -Raw
     if ($zonContent -match 'minimum_zig_version\s*=\s*"([^"]+)"') {
         $required = $Matches[1]
+    }
+    $zvmVersion = $null
+    if ($zonContent -match '\.version\s*=\s*"([^"]+)"') {
+        $zvmVersion = $Matches[1]
+    }
+
+    if (-not $Force -and $zvmVersion) {
+        $installedVersion = Get-InstalledZvmVersion
+        if ($installedVersion -eq $zvmVersion) {
+            Write-Host "zvm $installedVersion is already installed."
+
+            exit 0
+        }
     }
 
     $zigCmd = Get-Command zig -ErrorAction SilentlyContinue
@@ -70,6 +102,27 @@ if ($Build) {
     Copy-Item (Join-Path $ScriptDir "zig-out\bin\zig.exe") -Destination (Join-Path $binDir "zig.exe") -Force
     Copy-Item (Join-Path $ScriptDir "zig-out\bin\zvm.exe") -Destination (Join-Path $binDir "zvm.exe") -Force
 } else {
+    if (-not $Force) {
+        $installedVersion = Get-InstalledZvmVersion
+        if ($installedVersion) {
+            try {
+                $release = Invoke-RestMethod -Uri $ReleaseApi
+                $remoteVersion = ([string]$release.tag_name).Trim()
+                if ($remoteVersion.StartsWith("v")) {
+                    $remoteVersion = $remoteVersion.Substring(1)
+                }
+
+                if ($remoteVersion -and $installedVersion -eq $remoteVersion) {
+                    Write-Host "zvm $installedVersion is already installed."
+
+                    exit 0
+                }
+            } catch {
+                Write-Warning "Could not check the latest zvm release, continuing with installation."
+            }
+        }
+    }
+
     $url = "$ReleaseBase/zvm-$target.zip"
 
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
