@@ -22,6 +22,7 @@ pub fn main(init: std.process.Init) !void {
         try argv_list.append(gpa, a);
     }
     const argv = argv_list.items;
+    zvm.debug.log("zvm {s}", .{zvm.app_version});
 
     var stdout_buf: [4096]u8 = undefined;
     var stdout_fw: Io.File.Writer = .init(.stdout(), io, &stdout_buf);
@@ -75,7 +76,13 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
-    if (is_install) {
+    if (std.mem.eql(u8, cmd, "version") or
+        std.mem.eql(u8, cmd, "--version") or
+        std.mem.eql(u8, cmd, "-v") or
+        std.mem.eql(u8, cmd, "-V"))
+    {
+        try out.writer.print("{s}\n", .{zvm.app_version});
+    } else if (is_install) {
         try cmdInstall(&ctx, out, errw, rest);
     } else if (std.mem.eql(u8, cmd, "list") or std.mem.eql(u8, cmd, "ls")) {
         try cmdList(&ctx, out);
@@ -335,7 +342,7 @@ fn cmdDefault(
 
 fn printHelp(w: *Io.Writer) !void {
     try w.print(
-        \\zvm -- a lightweight Zig version manager
+        \\zvm {s} -- a lightweight Zig version manager
         \\
         \\Usage:
         \\  zvm install [version]     Download and cache a zig version (auto-detected if omitted)
@@ -345,6 +352,7 @@ fn printHelp(w: *Io.Writer) !void {
         \\  zvm which [version]       Show which version would be used, and why
         \\  zvm default [version]     Show or set the fallback version
         \\  zvm default clear         Clear the fallback version
+        \\  zvm version               Show the zvm version
         \\
         \\  --verbose                  Show version resolution / mirror / cache decisions
         \\  --no-verify                Skip SHA-256 and Minisign verification for install/add (unsafe)
@@ -354,7 +362,7 @@ fn printHelp(w: *Io.Writer) !void {
         \\same verbose output from the shim (it can't take --verbose itself --
         \\everything after it passes straight through to the real compiler).
         \\
-    , .{});
+    , .{zvm.app_version});
 }
 
 const zvm = @import("zvm");

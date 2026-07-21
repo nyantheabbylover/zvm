@@ -5,6 +5,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const argv = try init.minimal.args.toSlice(gpa);
     zvm.debug.initFromEnv(gpa, init.minimal.environ);
+    zvm.debug.log("zvm {s}", .{zvm.app_version});
 
     var stderr_buf: [4096]u8 = undefined;
     var stderr_fw: Io.File.Writer = .init(.stderr(), io, &stderr_buf);

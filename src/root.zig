@@ -16,4 +16,5 @@ pub const resolve = @import("zvm/resolve.zig");
 pub const retry = @import("zvm/retry.zig");
 pub const target = @import("zvm/target.zig");
 pub const version = @import("zvm/version.zig");
+pub const app_version = @import("build_options").app_version;
 pub const zon_scan = @import("zvm/zon_scan.zig");

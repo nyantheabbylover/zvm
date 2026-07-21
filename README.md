@@ -117,6 +117,9 @@ zvm list
 # See versions known by the official index
 zvm list-remote
 
+# Show the zvm version
+zvm version
+
 # See what `zig` would choose here, and why
 zvm which
 
