@@ -7,7 +7,9 @@ pub fn main(init: std.process.Init) !void {
     var argv_list: std.ArrayList([]const u8) = .empty;
     var skip_verification = false;
     for (raw_argv) |a| {
-        if (std.mem.eql(u8, a, "--verbose")) {
+        if (std.mem.eql(u8, a, "--verbose") or
+            std.mem.eql(u8, a, "-v"))
+        {
             zvm.debug.enabled = true;
 
             continue;
@@ -78,23 +80,32 @@ pub fn main(init: std.process.Init) !void {
 
     if (std.mem.eql(u8, cmd, "version") or
         std.mem.eql(u8, cmd, "--version") or
-        std.mem.eql(u8, cmd, "-v") or
         std.mem.eql(u8, cmd, "-V"))
     {
         try out.writer.print("{s}\n", .{zvm.app_version});
     } else if (is_install) {
         try cmdInstall(&ctx, out, errw, rest);
-    } else if (std.mem.eql(u8, cmd, "list") or std.mem.eql(u8, cmd, "ls")) {
+    } else if (std.mem.eql(u8, cmd, "list") or
+        std.mem.eql(u8, cmd, "ls"))
+    {
         try cmdList(&ctx, out);
-    } else if (std.mem.eql(u8, cmd, "list-remote") or std.mem.eql(u8, cmd, "ls-remote")) {
+    } else if (std.mem.eql(u8, cmd, "list-remote") or
+        std.mem.eql(u8, cmd, "ls-remote"))
+    {
         try cmdListRemote(&ctx, out, errw);
-    } else if (std.mem.eql(u8, cmd, "remove") or std.mem.eql(u8, cmd, "rm") or std.mem.eql(u8, cmd, "uninstall")) {
+    } else if (std.mem.eql(u8, cmd, "remove") or
+        std.mem.eql(u8, cmd, "rm") or
+        std.mem.eql(u8, cmd, "uninstall"))
+    {
         try cmdRemove(&ctx, out, errw, rest);
     } else if (std.mem.eql(u8, cmd, "which")) {
         try cmdWhich(&ctx, out, errw, rest);
     } else if (std.mem.eql(u8, cmd, "default")) {
         try cmdDefault(&ctx, out, errw, rest);
-    } else if (std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h") or std.mem.eql(u8, cmd, "help")) {
+    } else if (std.mem.eql(u8, cmd, "--help") or
+        std.mem.eql(u8, cmd, "-h") or
+        std.mem.eql(u8, cmd, "help"))
+    {
         try printHelp(out);
     } else {
         try zvm.color.print(errw, .red, "zvm: unknown command '{s}'\n\n", .{cmd});
