@@ -4,6 +4,7 @@
 ///   cache/index.json      cached download index + cache/index.meta fetch timestamp
 ///   cache/mirrors.txt     cached mirror list + cache/mirrors.meta fetch timestamp
 ///   cache/tmp/            in-progress downloads/extracts
+///   cache/locks/          per-version install locks
 ///   config.json           default_version, last_used_version
 ///   bin/                  where the zig/zvm binaries are meant to live once on PATH
 pub const Paths = struct {
@@ -11,6 +12,7 @@ pub const Paths = struct {
     versions: []const u8,
     cache: []const u8,
     tmp: []const u8,
+    locks: []const u8,
     bin: []const u8,
     config_file: []const u8,
     index_file: []const u8,
@@ -29,6 +31,7 @@ pub const Paths = struct {
             .versions = try std.fs.path.join(gpa, &.{ base, "versions" }),
             .cache = try std.fs.path.join(gpa, &.{ base, "cache" }),
             .tmp = try std.fs.path.join(gpa, &.{ base, "cache", "tmp" }),
+            .locks = try std.fs.path.join(gpa, &.{ base, "cache", "locks" }),
             .bin = try std.fs.path.join(gpa, &.{ base, "bin" }),
             .config_file = try std.fs.path.join(gpa, &.{ base, "config.json" }),
             .index_file = try std.fs.path.join(gpa, &.{ base, "cache", "index.json" }),
@@ -45,11 +48,12 @@ pub const Paths = struct {
     }
 
     /// Creates the directory layout. Recursive, so creating `versions`,
-    /// `tmp` and `bin` also creates `base` and `cache`.
+    /// `tmp`, `locks`, and `bin` also creates `base` and `cache`.
     pub fn ensureLayout(self: Paths, io: Io) !void {
         const cwd = Io.Dir.cwd();
         try cwd.createDirPath(io, self.versions);
         try cwd.createDirPath(io, self.tmp);
+        try cwd.createDirPath(io, self.locks);
         try cwd.createDirPath(io, self.bin);
     }
 };

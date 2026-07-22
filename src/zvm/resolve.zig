@@ -155,6 +155,36 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
     const final_dir = try ctx.paths.versionDir(ctx.gpa, resolved.version);
     if (isInstalled(ctx, final_dir)) {
         debug.log("{s} already installed at {s}", .{ resolved.version, final_dir });
+
+        resolve_node.end();
+
+        return .{
+            .version = resolved.version,
+            .verified = ctx.skip_verification or resolved.shasum != null,
+            .already_installed = true,
+        };
+    }
+
+    const lock_name = try std.fmt.allocPrint(ctx.gpa, "{s}.lock", .{resolved.version});
+    const lock_path = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.locks, lock_name });
+    var lock_file = try Io.Dir.cwd().createFile(ctx.io, lock_path, .{
+        .read = true,
+        .truncate = false,
+    });
+    defer lock_file.close(ctx.io);
+
+    if (!try lock_file.tryLock(ctx.io, .exclusive)) {
+        debug.log("waiting for install lock: {s}", .{resolved.version});
+
+        try lock_file.lock(ctx.io, .exclusive);
+    }
+    defer lock_file.unlock(ctx.io);
+
+    // Another zvm instance may have installed this version while this one was
+    // waiting for the lock.
+    if (isInstalled(ctx, final_dir)) {
+        debug.log("{s} was installed by another process", .{resolved.version});
+
         resolve_node.end();
 
         return .{
@@ -169,6 +199,7 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
         const signature = net.get(ctx.gpa, ctx.io, signature_url) catch {
             if (!confirmUnverified(ctx, resolved.version))
                 return error.SignatureUnavailable;
+
             break :blk null;
         };
         if (signature.status != .ok) {
@@ -182,9 +213,12 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
     } else null;
     const verified = ctx.skip_verification or resolved.shasum != null or minisign_signature != null;
 
-    const scratch = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.tmp, resolved.version });
+    const install_tmp = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.tmp, resolved.version });
+    const scratch = try std.fs.path.join(ctx.gpa, &.{ install_tmp, "extract" });
     const archive_name = urlBasename(resolved.tarball_url);
-    const archive_path = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.tmp, archive_name });
+    const archive_path = try std.fs.path.join(ctx.gpa, &.{ install_tmp, archive_name });
+    try Io.Dir.cwd().createDirPath(ctx.io, install_tmp);
+    errdefer retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
 
     var urls: std.ArrayList([]const u8) = .empty;
     const mirror_list = fetchMirrors(ctx.gpa, ctx.io, ctx.paths);
@@ -192,6 +226,7 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
         try urls.append(ctx.gpa, try mirrorUrl(ctx.gpa, m, archive_name));
     }
     try urls.append(ctx.gpa, resolved.tarball_url);
+
     debug.log(
         "{d} download source(s) for {s} ({d} mirror(s) + direct)",
         .{
@@ -200,6 +235,7 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
             mirror_list.len,
         },
     );
+
     resolve_node.end();
 
     const download_label = try std.fmt.allocPrint(ctx.gpa, "zig {s}", .{resolved.version});
@@ -226,8 +262,7 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
     );
 
     const cleanup_node = progress.start("cleaning up", 0);
-    retry.deleteTree(ctx.io, Io.Dir.cwd(), ctx.paths.tmp) catch {};
-    Io.Dir.cwd().createDirPath(ctx.io, ctx.paths.tmp) catch {};
+    retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
     cleanup_node.end();
 
     return .{
