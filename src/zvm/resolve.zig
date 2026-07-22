@@ -165,20 +165,8 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
         };
     }
 
-    const lock_name = try std.fmt.allocPrint(ctx.gpa, "{s}.lock", .{resolved.version});
-    const lock_path = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.locks, lock_name });
-    var lock_file = try Io.Dir.cwd().createFile(ctx.io, lock_path, .{
-        .read = true,
-        .truncate = false,
-    });
-    defer lock_file.close(ctx.io);
-
-    if (!try lock_file.tryLock(ctx.io, .exclusive)) {
-        debug.log("waiting for install lock: {s}", .{resolved.version});
-
-        try lock_file.lock(ctx.io, .exclusive);
-    }
-    defer lock_file.unlock(ctx.io);
+    var install_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+    defer install_lock.release(ctx.io);
 
     // Another zvm instance may have installed this version while this one was
     // waiting for the lock.
@@ -342,6 +330,7 @@ const config = @import("config.zig");
 const debug = @import("debug.zig");
 const extract = @import("extract.zig");
 const index = @import("index.zig");
+const lock = @import("lock.zig");
 const minisign = @import("minisign.zig");
 const net = @import("net.zig");
 const retry = @import("retry.zig");

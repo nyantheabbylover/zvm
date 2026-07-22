@@ -8,6 +8,7 @@ pub const download = @import("zvm/download.zig");
 pub const exec = @import("zvm/exec.zig");
 pub const extract = @import("zvm/extract.zig");
 pub const index = @import("zvm/index.zig");
+pub const lock = @import("zvm/lock.zig");
 pub const mirrors = @import("zvm/mirrors.zig");
 pub const minisign = @import("zvm/minisign.zig");
 pub const net = @import("zvm/net.zig");

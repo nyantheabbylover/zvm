@@ -257,6 +257,9 @@ fn cmdRemove(
     };
     const dir_path = try ctx.paths.versionDir(ctx.gpa, v);
 
+    var version_lock = try zvm.lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, v);
+    defer version_lock.release(ctx.io);
+
     if (!zvm.resolve.isInstalled(ctx, dir_path)) {
         try zvm.color.print(out, .dim, "zig {s} is not installed\n", .{v});
 
