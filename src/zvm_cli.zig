@@ -257,7 +257,27 @@ fn cmdRemove(
     };
     const dir_path = try ctx.paths.versionDir(ctx.gpa, v);
 
-    var version_lock = try zvm.lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, v);
+    var version_lock = zvm.lock.tryAcquireExclusive(
+        ctx.gpa,
+        ctx.io,
+        ctx.paths.locks,
+        v,
+    ) catch |e| {
+        try zvm.color.print(errw, .red, "zvm: failed to lock {s}: {s}\n", .{ v, @errorName(e) });
+        try errw.writer.flush();
+
+        std.process.exit(1);
+    } orelse {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: cannot remove {s}: version is currently in use or being installed\n",
+            .{v},
+        );
+        try errw.writer.flush();
+
+        std.process.exit(1);
+    };
     defer version_lock.release(ctx.io);
 
     if (!zvm.resolve.isInstalled(ctx, dir_path)) {

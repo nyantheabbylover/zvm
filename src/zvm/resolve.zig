@@ -27,6 +27,11 @@ pub const InstallResult = struct {
     already_installed: bool,
 };
 
+pub const UseResult = struct {
+    install: InstallResult,
+    version_lock: lock.Held,
+};
+
 /// Version resolution order: explicit override > nearest build.zig.zon
 /// (walking up from cwd) > configured default > most recently used
 /// installed version > error.
@@ -134,7 +139,40 @@ fn displayPath(ctx: *Context, dir: Io.Dir) []const u8 {
     return std.fs.path.join(ctx.gpa, &.{ buf[0..n], "build.zig.zon" }) catch "build.zig.zon";
 }
 
-pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: std.Progress.Node) !InstallResult {
+pub fn ensureInstalled(
+    ctx: *Context,
+    requested_version: []const u8,
+    progress: std.Progress.Node,
+) !InstallResult {
+    const result = try ensureInstalledInner(ctx, requested_version, progress, false);
+
+    return result.install;
+}
+
+pub fn ensureInstalledForUse(
+    ctx: *Context,
+    requested_version: []const u8,
+    progress: std.Progress.Node,
+) !UseResult {
+    const result = try ensureInstalledInner(ctx, requested_version, progress, true);
+
+    return .{
+        .install = result.install,
+        .version_lock = result.version_lock.?,
+    };
+}
+
+const EnsureResult = struct {
+    install: InstallResult,
+    version_lock: ?lock.Held,
+};
+
+fn ensureInstalledInner(
+    ctx: *Context,
+    requested_version: []const u8,
+    progress: std.Progress.Node,
+    retain_lock: bool,
+) !EnsureResult {
     try validateVersion(requested_version);
     const resolve_label = try std.fmt.allocPrint(ctx.gpa, "resolve zig {s}", .{requested_version});
     const resolve_node = progress.start(resolve_label, 0);
@@ -151,37 +189,43 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
     };
 
     const final_dir = try ctx.paths.versionDir(ctx.gpa, resolved.version);
+    var version_lock: ?lock.Held = null;
+    errdefer if (version_lock) |*held| held.release(ctx.io);
+
+    if (retain_lock or !isInstalled(ctx, final_dir)) {
+        version_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+    }
+
+    // Another zvm instance may have installed this version while this one was
+    // waiting for the lock.
     if (isInstalled(ctx, final_dir)) {
         debug.log("{s} already installed at {s}", .{ resolved.version, final_dir });
 
         resolve_node.end();
 
-        return .{
-            .version = resolved.version,
-            .verified = ctx.skip_verification or resolved.shasum != null,
-            .already_installed = true,
-        };
-    }
-
-    var install_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
-    defer install_lock.release(ctx.io);
-
-    // Another zvm instance may have installed this version while this one was
-    // waiting for the lock.
-    if (isInstalled(ctx, final_dir)) {
-        debug.log("{s} was installed by another process", .{resolved.version});
-
-        resolve_node.end();
+        if (retain_lock) {
+            try version_lock.?.downgrade(ctx.io);
+        } else if (version_lock) |*held| {
+            held.release(ctx.io);
+            version_lock = null;
+        }
 
         return .{
-            .version = resolved.version,
-            .verified = ctx.skip_verification or resolved.shasum != null,
-            .already_installed = true,
+            .install = .{
+                .version = resolved.version,
+                .verified = ctx.skip_verification or resolved.shasum != null,
+                .already_installed = true,
+            },
+            .version_lock = version_lock,
         };
     }
 
     const minisign_signature: ?[]const u8 = if (!ctx.skip_verification and resolved.shasum == null) blk: {
-        const signature_url = try std.fmt.allocPrint(ctx.gpa, "{s}.minisig", .{resolved.tarball_url});
+        const signature_url = try std.fmt.allocPrint(
+            ctx.gpa,
+            "{s}.minisig",
+            .{resolved.tarball_url},
+        );
         const signature = net.get(ctx.gpa, ctx.io, signature_url) catch {
             if (!confirmUnverified(ctx, resolved.version))
                 return error.SignatureUnavailable;
@@ -251,10 +295,20 @@ pub fn ensureInstalled(ctx: *Context, requested_version: []const u8, progress: s
     retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
     cleanup_node.end();
 
+    if (retain_lock) {
+        try version_lock.?.downgrade(ctx.io);
+    } else if (version_lock) |*held| {
+        held.release(ctx.io);
+        version_lock = null;
+    }
+
     return .{
-        .version = resolved.version,
-        .verified = verified,
-        .already_installed = false,
+        .install = .{
+            .version = resolved.version,
+            .verified = verified,
+            .already_installed = false,
+        },
+        .version_lock = version_lock,
     };
 }
 

@@ -62,7 +62,7 @@ pub fn main(init: std.process.Init) !void {
             .root_name = "zvm",
         },
     );
-    const install_result = zvm.resolve.ensureInstalled(
+    var use_result = zvm.resolve.ensureInstalledForUse(
         &ctx,
         resolution.version,
         root_progress,
@@ -78,6 +78,9 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
     root_progress.end();
+    defer use_result.version_lock.release(io);
+
+    const install_result = use_result.install;
 
     if (!install_result.verified) {
         try zvm.color.print(
@@ -99,6 +102,7 @@ pub fn main(init: std.process.Init) !void {
     try real_argv.appendSlice(gpa, argv[passthrough_start..]);
 
     zvm.debug.log("exec: {s}", .{exe_path});
+    try use_result.version_lock.inheritAcrossExec();
     const code = zvm.exec.run(io, real_argv.items) catch |e| {
         try zvm.color.print(errw, .red, "zvm: failed to launch {s}: {s}\n", .{ exe_path, @errorName(e) });
         try errw.writer.flush();
