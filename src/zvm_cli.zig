@@ -322,10 +322,8 @@ fn cmdDefault(
         return;
     }
 
-    var cfg = zvm.config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch zvm.config.Config{};
     if (std.mem.eql(u8, args[0], "clear")) {
-        cfg.default_version = null;
-        try zvm.config.save(ctx.gpa, ctx.io, ctx.paths.config_file, cfg);
+        try zvm.config.setDefault(ctx.gpa, ctx.io, ctx.paths, null);
         try zvm.color.print(out, .green, "default cleared\n", .{});
 
         return;
@@ -338,8 +336,7 @@ fn cmdDefault(
         std.process.exit(1);
     };
 
-    cfg.default_version = args[0];
-    try zvm.config.save(ctx.gpa, ctx.io, ctx.paths.config_file, cfg);
+    try zvm.config.setDefault(ctx.gpa, ctx.io, ctx.paths, args[0]);
     try zvm.color.print(out, .green, "default set to {s}\n", .{args[0]});
 }
 

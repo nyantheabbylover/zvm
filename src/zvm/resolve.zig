@@ -80,9 +80,7 @@ pub fn resolveVersion(ctx: *Context, override: ?[]const u8) !Resolution {
 }
 
 pub fn recordUse(ctx: *Context, version: []const u8) void {
-    var cfg = config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch Config{};
-    cfg.last_used_version = version;
-    config.save(ctx.gpa, ctx.io, ctx.paths.config_file, cfg) catch {};
+    config.recordUse(ctx.gpa, ctx.io, ctx.paths, version) catch {};
 }
 
 const ProjectVersion = struct {
