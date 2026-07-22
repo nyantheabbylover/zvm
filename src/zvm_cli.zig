@@ -210,7 +210,7 @@ fn cmdList(
 
         const is_default = cfg.default_version != null and std.mem.eql(u8, cfg.default_version.?, entry.name);
         const is_recent = cfg.last_used_version != null and std.mem.eql(u8, cfg.last_used_version.?, entry.name);
-        try out.writer.print("  {s}", .{entry.name});
+        try zvm.color.print(out, .cyan, "  {s}", .{entry.name});
         if (is_default) try zvm.color.print(out, .cyan, "  (default)", .{});
         if (is_recent) try zvm.color.print(out, .dim, "  (last used)", .{});
         try out.writer.print("\n", .{});
@@ -243,8 +243,9 @@ fn cmdListRemote(
         }
     }.lessThan);
 
-    try out.writer.print("master (dev)\n", .{});
-    for (list.items) |v| try out.writer.print("{s}\n", .{v});
+    try zvm.color.print(out, .yellow, "master", .{});
+    try zvm.color.print(out, .dim, " (dev)\n", .{});
+    for (list.items) |v| try zvm.color.print(out, .cyan, "{s}\n", .{v});
 }
 
 fn cmdRemove(
@@ -329,9 +330,13 @@ fn cmdWhich(
     const dir_path = try ctx.paths.versionDir(ctx.gpa, resolution.version);
     const installed = zvm.resolve.isInstalled(ctx, dir_path);
 
-    try out.writer.print("{s}\n  source: {s}", .{ resolution.version, @tagName(resolution.source) });
-    if (resolution.project_file) |p| try out.writer.print(" ({s})", .{p});
-    try out.writer.print("\n  status: ", .{});
+    try zvm.color.print(out, .cyan, "{s}\n", .{resolution.version});
+    try zvm.color.print(out, .dim, "  source: ", .{});
+    try out.writer.print("{s}", .{@tagName(resolution.source)});
+    if (resolution.project_file) |p| {
+        try zvm.color.print(out, .dim, " ({s})", .{p});
+    }
+    try zvm.color.print(out, .dim, "\n  status: ", .{});
     if (installed) {
         try zvm.color.print(out, .green, "installed", .{});
     } else {
@@ -348,7 +353,11 @@ fn cmdDefault(
 ) !void {
     if (args.len == 0) {
         const cfg = zvm.config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch zvm.config.Config{};
-        if (cfg.default_version) |d| try out.writer.print("{s}\n", .{d}) else try zvm.color.print(out, .dim, "(none set)\n", .{});
+        if (cfg.default_version) |d| {
+            try zvm.color.print(out, .cyan, "{s}\n", .{d});
+        } else {
+            try zvm.color.print(out, .dim, "(none set)\n", .{});
+        }
 
         return;
     }
