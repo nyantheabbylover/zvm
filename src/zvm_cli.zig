@@ -59,7 +59,7 @@ pub fn main(init: std.process.Init) !void {
     };
 
     if (argv.len < 2) {
-        try printHelp(out.writer);
+        try printHelp(out);
         try out.writer.flush();
 
         return;
@@ -95,10 +95,10 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "default")) {
         try cmdDefault(&ctx, out, errw, rest);
     } else if (std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h") or std.mem.eql(u8, cmd, "help")) {
-        try printHelp(out.writer);
+        try printHelp(out);
     } else {
         try zvm.color.print(errw, .red, "zvm: unknown command '{s}'\n\n", .{cmd});
-        try printHelp(errw.writer);
+        try printHelp(errw);
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -360,29 +360,40 @@ fn cmdDefault(
     try zvm.color.print(out, .green, "default set to {s}\n", .{args[0]});
 }
 
-fn printHelp(w: *Io.Writer) !void {
-    try w.print(
-        \\zvm {s} -- a lightweight Zig version manager
-        \\
-        \\Usage:
-        \\  zvm install [version]     Download and cache a zig version (auto-detected if omitted)
-        \\  zvm list                  List installed versions
-        \\  zvm list-remote           List versions available for download
-        \\  zvm remove <version>      Delete an installed version
-        \\  zvm which [version]       Show which version would be used, and why
-        \\  zvm default [version]     Show or set the fallback version
-        \\  zvm default clear         Clear the fallback version
-        \\  zvm version               Show the zvm version
-        \\
-        \\  --verbose                  Show version resolution / mirror / cache decisions
-        \\  --no-verify                Skip SHA-256 and Minisign verification for install/add (unsafe)
-        \\
-        \\The `zig` shim auto-selects a version from build.zig.zon,
-        \\or you can override it: `zig 0.16.0 build`. Set ZVM_DEBUG=1 to get the
-        \\same verbose output from the shim (it can't take --verbose itself --
-        \\everything after it passes straight through to the real compiler).
-        \\
-    , .{zvm.app_version});
+fn printHelp(t: Io.Terminal) !void {
+    try zvm.color.print(t, .cyan, "zvm", .{});
+    try zvm.color.print(t, .dim, " {s}\n", .{zvm.app_version});
+
+    try zvm.color.print(t, .yellow, "Usage:\n", .{});
+    try zvm.color.print(t, .cyan, "  zvm <command>", .{});
+    try t.writer.print(" [arguments]\n\n", .{});
+
+    try zvm.color.print(t, .yellow, "Commands:\n", .{});
+    try helpEntry(t, "zvm install [version]", "Download and cache a Zig version (auto-detected if omitted)");
+    try helpEntry(t, "zvm list", "List installed versions");
+    try helpEntry(t, "zvm list-remote", "List versions available for download");
+    try helpEntry(t, "zvm remove <version>", "Delete an installed version");
+    try helpEntry(t, "zvm which [version]", "Show which version would be used, and why");
+    try helpEntry(t, "zvm default [version]", "Show or set the fallback version");
+    try helpEntry(t, "zvm default clear", "Clear the fallback version");
+    try helpEntry(t, "zvm version", "Show the zvm version");
+    try t.writer.print("\n", .{});
+
+    try zvm.color.print(t, .yellow, "Options:\n", .{});
+    try helpEntry(t, "--verbose", "Show version resolution, mirror, and cache decisions");
+    try helpEntry(t, "--no-verify", "Skip verification for install/add (unsafe)");
+    try t.writer.print("\n", .{});
+
+    try zvm.color.print(t, .dim, "The `zig` shim auto-selects a version from build.zig.zon.\n", .{});
+    try zvm.color.print(t, .dim, "Override it with `zig 0.16.0 build`. Set ZVM_DEBUG=1 for shim debug output.\n", .{});
+    try zvm.color.print(t, .dim, "The shim cannot take --verbose itself as the remaining arguments go to Zig.\n", .{});
+}
+
+fn helpEntry(t: Io.Terminal, command: []const u8, description: []const u8) !void {
+    try zvm.color.print(t, .cyan, "  {s}", .{command});
+    const padding = if (command.len < 24) 24 - command.len else 1;
+    try t.writer.splatByteAll(' ', padding);
+    try t.writer.print("{s}\n", .{description});
 }
 
 const zvm = @import("zvm");
