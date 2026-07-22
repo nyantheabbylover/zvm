@@ -1,6 +1,6 @@
 .{
     .name = .zvm,
-    .version = "0.1.1",
+    .version = "0.1.2",
     .fingerprint = 0xec41f7014b394ca6,
     .minimum_zig_version = "0.16.0",
     .paths = .{""},
