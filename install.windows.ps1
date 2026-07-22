@@ -71,7 +71,7 @@ if ($Build) {
         if ($installedVersion -eq $zvmVersion) {
             Write-Host "zvm $installedVersion is already installed."
 
-            exit 0
+            return
         }
     }
 
@@ -115,7 +115,7 @@ if ($Build) {
                 if ($remoteVersion -and $installedVersion -eq $remoteVersion) {
                     Write-Host "zvm $installedVersion is already installed."
 
-                    exit 0
+                    return
                 }
             } catch {
                 Write-Warning "Could not check the latest zvm release, continuing with installation."
