@@ -5,7 +5,16 @@ const ttl_seconds: i64 = 24 * 60 * 60;
 /// failure just yields an empty list, mirrors are a best-effort speedup,
 /// callers always keep ziglang.org itself as the final fallback.
 pub fn fetchMirrors(gpa: std.mem.Allocator, io: Io, paths: paths_mod.Paths) [][]const u8 {
-    const body = cached_fetch.fetch(gpa, io, mirrors_url, paths.mirrors_file, paths.mirrors_meta_file, ttl_seconds) catch |err| {
+    const body = cached_fetch.fetch(
+        gpa,
+        io,
+        mirrors_url,
+        paths.mirrors_file,
+        paths.mirrors_meta_file,
+        paths.locks,
+        "mirrors",
+        ttl_seconds,
+    ) catch |err| {
         debug.log("mirror list unavailable ({s}), falling back to ziglang.org directly", .{@errorName(err)});
 
         return &.{};

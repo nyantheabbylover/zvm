@@ -18,6 +18,8 @@ pub fn fetchIndexObject(gpa: std.mem.Allocator, io: Io, paths: Paths) !std.json.
         index_url,
         paths.index_file,
         paths.index_meta_file,
+        paths.locks,
+        "index",
         ttl_seconds,
     );
     const parsed = try std.json.parseFromSlice(

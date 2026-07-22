@@ -4,6 +4,8 @@ pub fn fetch(
     url: []const u8,
     cache_path: []const u8,
     meta_path: []const u8,
+    lock_dir: []const u8,
+    lock_name: []const u8,
     ttl_seconds: i64,
 ) ![]u8 {
     if (readFresh(
@@ -14,6 +16,23 @@ pub fn fetch(
         ttl_seconds,
     )) |cached| {
         debug.log("cache hit: {s}", .{cache_path});
+
+        return cached;
+    }
+
+    var cache_lock = try lock.acquire(gpa, io, lock_dir, lock_name);
+    defer cache_lock.release(io);
+
+    // Another zvm instance may have refreshed this cache while this one was
+    // waiting for the lock.
+    if (readFresh(
+        gpa,
+        io,
+        cache_path,
+        meta_path,
+        ttl_seconds,
+    )) |cached| {
+        debug.log("cache refreshed by another process: {s}", .{cache_path});
 
         return cached;
     }
@@ -64,15 +83,11 @@ fn writeCache(io: Io, cache_path: []const u8, meta_path: []const u8, body: []con
 }
 
 fn writeFile(io: Io, path: []const u8, data: []const u8) !void {
-    const cwd = Io.Dir.cwd();
-    var file = try cwd.createFile(io, path, .{});
-    defer file.close(io);
-    var buf: [4096]u8 = undefined;
-    var fw = file.writer(io, &buf);
-    try fw.interface.writeAll(data);
-    try fw.interface.flush();
+    try atomic_write.writeFile(io, path, data);
 }
 
+const atomic_write = @import("atomic_write.zig");
+const lock = @import("lock.zig");
 const net = @import("net.zig");
 const debug = @import("debug.zig");
 
