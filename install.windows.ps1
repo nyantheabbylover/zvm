@@ -222,8 +222,11 @@ Write-Host "Installed zig + zvm to $binDir"
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 $pathEntries = @()
 if ($userPath) { $pathEntries = $userPath -split ";" }
+$pathAvailable = ($env:PATH -split ";") -contains $binDir
+$pathConfigured = $false
 
 if ($pathEntries -contains $binDir) {
+    $pathConfigured = $true
     Write-Host "$binDir is already on your PATH."
 } else {
     $answer = $null
@@ -241,6 +244,7 @@ if ($pathEntries -contains $binDir) {
     } elseif ([string]::IsNullOrWhiteSpace($answer) -or $answer -match '^[Yy]') {
         $newPath = if ($userPath) { "$binDir;$userPath" } else { $binDir }
         [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+        $pathConfigured = $true
         Write-Host "Added. Open a new terminal to pick it up."
     } else {
         Write-Host "Skipped. Run this PowerShell command to add zvm to your user PATH:"
@@ -249,4 +253,10 @@ if ($pathEntries -contains $binDir) {
 }
 
 Write-Host ""
-Write-Host "Done. Open a new terminal and try: zig version"
+if ($pathAvailable) {
+    Write-Host "Done. Try: zvm version"
+} elseif ($pathConfigured) {
+    Write-Host "Done. Open a new terminal and try: zvm version"
+} else {
+    Write-Host "Done. Once $binDir is on your PATH, try: zvm version"
+}

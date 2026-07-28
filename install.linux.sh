@@ -180,8 +180,15 @@ chmod +x "$bin_dir/zig" "$bin_dir/zvm"
 
 echo "Installed zig + zvm to $bin_dir"
 
+path_available=0
+case ":$PATH:" in
+  *":$bin_dir:"*) path_available=1 ;;
+esac
+path_configured=0
+
 case ":$PATH:" in
   *":$bin_dir:"*)
+    path_configured=1
     echo "$bin_dir is already on your PATH."
     ;;
   *)
@@ -223,6 +230,7 @@ case ":$PATH:" in
           quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
           printf '\nexport PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir" >>"$profile"
         fi
+        path_configured=1
         echo "Added to $profile. Restart your shell to pick it up."
         ;;
         *)
@@ -241,4 +249,10 @@ case ":$PATH:" in
 esac
 
 echo
-echo "Done. Once $bin_dir is on your PATH, try: zig version"
+if [ "$path_available" = "1" ]; then
+  echo "Done. Try: zvm version"
+elif [ "$path_configured" = "1" ]; then
+  echo "Done. Restart your shell and try: zvm version"
+else
+  echo "Done. Once $bin_dir is on your PATH, try: zvm version"
+fi
