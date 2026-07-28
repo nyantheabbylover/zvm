@@ -36,6 +36,72 @@ function Get-InstalledZvmVersion {
     return $version.Trim()
 }
 
+function Get-ProcessesUsingFile {
+    param([string]$Path)
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    
+    @(
+        Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                $processPath = $_.Path
+                if ($processPath -and [System.IO.Path]::GetFullPath($processPath) -ieq $fullPath) {
+                    $_
+                }
+            } catch {}
+        }
+    )
+}
+
+function Copy-InstalledBinary {
+    param(
+        [string]$Source,
+        [string]$Destination
+    )
+
+    try {
+        Copy-Item $Source -Destination $Destination -Force
+        return
+    } catch {
+        $copyError = $_.Exception.Message
+    }
+
+    $processes = @(Get-ProcessesUsingFile $Destination)
+    if ($processes.Count -eq 0) {
+        throw "Could not replace $Destination. $copyError"
+    }
+
+    Write-Warning "Could not replace $Destination because it is in use by:"
+    foreach ($process in $processes) {
+        Write-Host "  $($process.ProcessName) (PID $($process.Id))"
+    }
+
+    $kill = $false
+    if ([Environment]::UserInteractive) {
+        $answer = Read-Host "Terminate these process(es) and retry? [y/N]"
+        $kill = $answer -match '^[Yy]'
+    }
+
+    if (-not $kill) {
+        throw "Could not replace $Destination. Close the process(es) above and retry the installation."
+    }
+
+    foreach ($process in $processes) {
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "Could not terminate $($process.ProcessName) (PID $($process.Id)): $($_.Exception.Message)"
+        }
+    }
+    Start-Sleep -Milliseconds 250
+
+    try {
+        Copy-Item $Source -Destination $Destination -Force
+    } catch {
+        throw "Could not replace $Destination even after terminating the blocking process(es). $($_.Exception.Message)"
+    }
+}
+
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_IDENTIFIER -like "*ARM*") {
     "aarch64"
 } else {
@@ -99,8 +165,8 @@ if ($Build) {
         Pop-Location
     }
 
-    Copy-Item (Join-Path $ScriptDir "zig-out\bin\zig.exe") -Destination (Join-Path $binDir "zig.exe") -Force
-    Copy-Item (Join-Path $ScriptDir "zig-out\bin\zvm.exe") -Destination (Join-Path $binDir "zvm.exe") -Force
+    Copy-InstalledBinary (Join-Path $ScriptDir "zig-out\bin\zig.exe") (Join-Path $binDir "zig.exe")
+    Copy-InstalledBinary (Join-Path $ScriptDir "zig-out\bin\zvm.exe") (Join-Path $binDir "zvm.exe")
 } else {
     if (-not $Force) {
         $installedVersion = Get-InstalledZvmVersion
@@ -143,8 +209,8 @@ if ($Build) {
             exit 1
         }
 
-        Copy-Item $zigExe.FullName -Destination (Join-Path $binDir "zig.exe") -Force
-        Copy-Item $zvmExe.FullName -Destination (Join-Path $binDir "zvm.exe") -Force
+        Copy-InstalledBinary $zigExe.FullName (Join-Path $binDir "zig.exe")
+        Copy-InstalledBinary $zvmExe.FullName (Join-Path $binDir "zvm.exe")
     }
     finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

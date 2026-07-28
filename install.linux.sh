@@ -44,6 +44,65 @@ fi
 bin_dir="$zvm_home/bin"
 mkdir -p "$bin_dir"
 
+find_processes_using() {
+  target="$1"
+  for proc_dir in /proc/[0-9]*; do
+    [ -r "$proc_dir/exe" ] || continue
+    process_path="$(readlink "$proc_dir/exe" 2>/dev/null || true)"
+    if [ "$process_path" = "$target" ]; then
+      printf '%s\n' "${proc_dir##*/}"
+    fi
+  done
+}
+
+copy_installed_binary() {
+  source="$1"
+  destination="$2"
+
+  pids="$(find_processes_using "$destination")"
+  if [ -n "$pids" ]; then
+    echo "warning: $destination is in use by:" >&2
+    for pid in $pids; do
+      process_name="$(cat "/proc/$pid/comm" 2>/dev/null || printf '%s' 'unknown')"
+      echo "  $process_name (PID $pid)" >&2
+    done
+
+    reply="n"
+    interactive_terminal=0
+    if [ -t 1 ] && [ -r /dev/tty ]; then
+      printf 'Terminate these process(es) and retry? [y/N] ' >/dev/tty
+      if read -r reply </dev/tty; then
+        interactive_terminal=1
+      fi
+    fi
+
+    case "$reply" in
+      [Yy]*)
+        for pid in $pids; do
+          kill -KILL "$pid" 2>/dev/null || true
+        done
+        sleep 0.25
+        ;;
+      *)
+        if [ "$interactive_terminal" = "1" ]; then
+          echo "Skipped. Close the process(es) above and retry the installation." >&2
+        else
+          echo "No interactive terminal was available. Close the process(es) above and retry the installation." >&2
+        fi
+        return 1
+        ;;
+    esac
+  fi
+
+  if cp "$source" "$destination" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "error: could not replace $destination." >&2
+  echo "Close programs using it and retry the installation." >&2
+  return 1
+}
+
 if [ "$build_from_source" = "1" ]; then
   SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
   zon_path="$SCRIPT_DIR/build.zig.zon"
@@ -79,8 +138,8 @@ if [ "$build_from_source" = "1" ]; then
   echo "Building zvm with zig $have..."
   (cd "$SCRIPT_DIR" && zig build -Doptimize=ReleaseFast)
 
-  cp "$SCRIPT_DIR/zig-out/bin/zig" "$bin_dir/zig"
-  cp "$SCRIPT_DIR/zig-out/bin/zvm" "$bin_dir/zvm"
+  copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zig" "$bin_dir/zig"
+  copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zvm" "$bin_dir/zvm"
 else
   if [ "$force" = "0" ] && command -v zvm >/dev/null 2>&1; then
     if release_json="$(curl -fsSL "$RELEASE_API" 2>/dev/null)"; then
@@ -113,8 +172,8 @@ else
     exit 1
   fi
 
-  cp "$zig_bin" "$bin_dir/zig"
-  cp "$zvm_bin" "$bin_dir/zvm"
+  copy_installed_binary "$zig_bin" "$bin_dir/zig"
+  copy_installed_binary "$zvm_bin" "$bin_dir/zvm"
 fi
 
 chmod +x "$bin_dir/zig" "$bin_dir/zvm"
