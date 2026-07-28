@@ -190,10 +190,23 @@ fn ensureInstalledInner(
 
     const final_dir = try ctx.paths.versionDir(ctx.gpa, resolved.version);
     var version_lock: ?lock.Held = null;
+    var holding_exclusive_lock = false;
     errdefer if (version_lock) |*held| held.release(ctx.io);
 
-    if (retain_lock or !isInstalled(ctx, final_dir)) {
+    // A running compiler holds a shared lock. Take one before checking for an
+    // existing installation so `remove` cannot race that check. If the
+    // version is absent, release it before taking the exclusive install lock.
+    if (retain_lock) {
+        version_lock = try lock.acquireShared(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+        if (!isInstalled(ctx, final_dir)) {
+            version_lock.?.release(ctx.io);
+            version_lock = null;
+        }
+    }
+
+    if (version_lock == null and !isInstalled(ctx, final_dir)) {
         version_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+        holding_exclusive_lock = true;
     }
 
     // Another zvm instance may have installed this version while this one was
@@ -204,7 +217,12 @@ fn ensureInstalledInner(
         resolve_node.end();
 
         if (retain_lock) {
-            try version_lock.?.downgrade(ctx.io);
+            if (holding_exclusive_lock) {
+                // The version was either installed while waiting for an
+                // exclusive lock, or we installed it ourselves. Let other Zig
+                // processes use it concurrently while still excluding `remove`.
+                try version_lock.?.downgrade(ctx.io);
+            }
         } else if (version_lock) |*held| {
             held.release(ctx.io);
             version_lock = null;

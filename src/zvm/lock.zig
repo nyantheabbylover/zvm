@@ -32,6 +32,10 @@ pub fn acquire(gpa: std.mem.Allocator, io: Io, lock_dir: []const u8, name: []con
     return (try acquireWithMode(gpa, io, lock_dir, name, .exclusive, true)) orelse unreachable;
 }
 
+pub fn acquireShared(gpa: std.mem.Allocator, io: Io, lock_dir: []const u8, name: []const u8) !Held {
+    return (try acquireWithMode(gpa, io, lock_dir, name, .shared, true)) orelse unreachable;
+}
+
 pub fn tryAcquireExclusive(gpa: std.mem.Allocator, io: Io, lock_dir: []const u8, name: []const u8) !?Held {
     return acquireWithMode(gpa, io, lock_dir, name, .exclusive, false);
 }
