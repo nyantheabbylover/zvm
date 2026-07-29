@@ -47,8 +47,8 @@ pub fn main(init: std.process.Init) !void {
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to determine cache directory: {s}\n",
-            .{@errorName(e)},
+            "zvm: failed to determine cache directory: {t}\n",
+            .{e},
         );
         try errw.writer.flush();
 
@@ -58,8 +58,8 @@ pub fn main(init: std.process.Init) !void {
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to create {s}: {s}\n",
-            .{ paths.base, @errorName(e) },
+            "zvm: failed to create {s}: {t}\n",
+            .{ paths.base, e },
         );
         try errw.writer.flush();
 
@@ -152,12 +152,7 @@ fn cmdInstall(
         zvm.resolve.Resolution{ .version = args[0], .source = .override }
     else
         zvm.resolve.resolveVersion(ctx, null) catch |e| {
-            try zvm.color.print(
-                errw,
-                .red,
-                "zvm: {s}\n",
-                .{@errorName(e)},
-            );
+            try zvm.color.print(errw, .red, "zvm: {t}\n", .{e});
             try errw.writer.flush();
 
             std.process.exit(1);
@@ -181,8 +176,8 @@ fn cmdInstall(
             try zvm.color.print(
                 errw,
                 .red,
-                "zvm: failed to install {s}: {s}\n",
-                .{ resolution.version, @errorName(e) },
+                "zvm: failed to install {s}: {t}\n",
+                .{ resolution.version, e },
             );
         }
         try errw.writer.flush();
@@ -289,8 +284,8 @@ fn cmdListRemote(
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to fetch version index: {s}\n",
-            .{@errorName(e)},
+            "zvm: failed to fetch version index: {t}\n",
+            .{e},
         );
         try errw.writer.flush();
 
@@ -338,8 +333,8 @@ fn cmdRemove(
         try zvm.color.print(
             errw,
             .red,
-            "zvm: invalid version '{s}': {s}\n",
-            .{ v, @errorName(e) },
+            "zvm: invalid version '{s}': {t}\n",
+            .{ v, e },
         );
         try errw.writer.flush();
 
@@ -356,8 +351,8 @@ fn cmdRemove(
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to lock {s}: {s}\n",
-            .{ v, @errorName(e) },
+            "zvm: failed to lock {s}: {t}\n",
+            .{ v, e },
         );
         try errw.writer.flush();
 
@@ -395,8 +390,8 @@ fn cmdRemove(
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to remove {s}: {s}\n",
-            .{ v, @errorName(e) },
+            "zvm: failed to remove {s}: {t}\n",
+            .{ v, e },
         );
         try errw.writer.flush();
 
@@ -420,7 +415,7 @@ fn cmdWhich(
 ) !void {
     const override: ?[]const u8 = if (args.len > 0) args[0] else null;
     const resolution = zvm.resolve.resolveVersion(ctx, override) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: {s}\n", .{@errorName(e)});
+        try zvm.color.print(errw, .red, "zvm: {t}\n", .{e});
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -472,8 +467,8 @@ fn cmdDefault(
         try zvm.color.print(
             errw,
             .red,
-            "zvm: invalid version '{s}': {s}\n",
-            .{ args[0], @errorName(e) },
+            "zvm: invalid version '{s}': {t}\n",
+            .{ args[0], e },
         );
         try errw.writer.flush();
 

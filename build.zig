@@ -60,11 +60,16 @@ fn packageVersion(b: *std.Build) []const u8 {
         "build.zig.zon",
         b.allocator,
         .limited(64 * 1024),
-    ) catch |err| std.debug.panic("unable to read build.zig.zon: {s}", .{@errorName(err)});
+    ) catch |err| std.debug.panic(
+        "unable to read build.zig.zon: {t}",
+        .{err},
+    );
     const prefix = ".version = \"";
-    const start = std.mem.indexOf(u8, zon, prefix) orelse @panic("build.zig.zon is missing .version");
+    const start = std.mem.indexOf(u8, zon, prefix) orelse
+        @panic("build.zig.zon is missing .version");
     const value = zon[start + prefix.len ..];
-    const end = std.mem.indexOfScalar(u8, value, '"') orelse @panic("build.zig.zon has an invalid .version");
+    const end = std.mem.indexOfScalar(u8, value, '"') orelse
+        @panic("build.zig.zon has an invalid .version");
 
     return value[0..end];
 }

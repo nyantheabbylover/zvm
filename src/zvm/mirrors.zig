@@ -20,8 +20,8 @@ pub fn fetchMirrors(
         ttl_seconds,
     ) catch |err| {
         debug.log(
-            "mirror list unavailable ({s}), falling back to ziglang.org directly",
-            .{@errorName(err)},
+            "mirror list unavailable ({t}), falling back to ziglang.org directly",
+            .{err},
         );
 
         return &.{};

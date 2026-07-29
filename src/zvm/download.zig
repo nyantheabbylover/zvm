@@ -24,7 +24,7 @@ pub fn download(
             label,
             node,
         ) catch |err| {
-            debug.log("  {s} failed: {s}", .{ url, @errorName(err) });
+            debug.log("  {s} failed: {t}", .{ url, err });
             last_err = err;
             node.setCompletedItems(i + 1);
 

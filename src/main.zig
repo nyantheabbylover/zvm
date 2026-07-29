@@ -21,8 +21,8 @@ pub fn main(init: std.process.Init) !void {
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to determine cache directory: {s}\n",
-            .{@errorName(e)},
+            "zvm: failed to determine cache directory: {t}\n",
+            .{e},
         );
         try errw.writer.flush();
 
@@ -32,8 +32,8 @@ pub fn main(init: std.process.Init) !void {
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to create {s}: {s}\n",
-            .{ paths.base, @errorName(e) },
+            "zvm: failed to create {s}: {t}\n",
+            .{ paths.base, e },
         );
         try errw.writer.flush();
 
@@ -64,10 +64,10 @@ pub fn main(init: std.process.Init) !void {
             \\  - pass a version explicitly: zig 0.16.0 build
             \\  - or add "minimum_zig_version" to build.zig.zon
             \\  - or run: zvm default <version>
-            \\({s})
+            \\({t})
             \\
         ,
-            .{@errorName(e)},
+            .{e},
         );
         try errw.writer.flush();
 
@@ -97,8 +97,8 @@ pub fn main(init: std.process.Init) !void {
             try zvm.color.print(
                 errw,
                 .red,
-                "zvm: failed to install zig {s}: {s}\n",
-                .{ resolution.version, @errorName(e) },
+                "zvm: failed to install zig {s}: {t}\n",
+                .{ resolution.version, e },
             );
         }
         try errw.writer.flush();
@@ -135,8 +135,8 @@ pub fn main(init: std.process.Init) !void {
         try zvm.color.print(
             errw,
             .red,
-            "zvm: failed to launch {s}: {s}\n",
-            .{ exe_path, @errorName(e) },
+            "zvm: failed to launch {s}: {t}\n",
+            .{ exe_path, e },
         );
         try errw.writer.flush();
 
