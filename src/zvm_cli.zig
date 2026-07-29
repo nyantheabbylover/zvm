@@ -40,14 +40,27 @@ pub fn main(init: std.process.Init) !void {
         .mode = zvm.color.detectMode(io, .stderr(), gpa, init.minimal.environ),
     };
 
-    const paths = zvm.paths.Paths.discover(gpa, init.minimal.environ) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to determine cache directory: {s}\n", .{@errorName(e)});
+    const paths = zvm.paths.Paths.discover(
+        gpa,
+        init.minimal.environ,
+    ) catch |e| {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to determine cache directory: {s}\n",
+            .{@errorName(e)},
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
     };
     paths.ensureLayout(io) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to create {s}: {s}\n", .{ paths.base, @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to create {s}: {s}\n",
+            .{ paths.base, @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -72,7 +85,12 @@ pub fn main(init: std.process.Init) !void {
     const is_install = std.mem.eql(u8, cmd, "install") or std.mem.eql(u8, cmd, "add");
 
     if (skip_verification and !is_install) {
-        try zvm.color.print(errw, .red, "zvm: --no-verify is only valid with install/add \n", .{});
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: --no-verify is only valid with install/add \n",
+            .{},
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -108,7 +126,12 @@ pub fn main(init: std.process.Init) !void {
     {
         try printHelp(out);
     } else {
-        try zvm.color.print(errw, .red, "zvm: unknown command '{s}'\n\n", .{cmd});
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: unknown command '{s}'\n\n",
+            .{cmd},
+        );
         try printHelp(errw);
         try errw.writer.flush();
 
@@ -129,7 +152,12 @@ fn cmdInstall(
         zvm.resolve.Resolution{ .version = args[0], .source = .override }
     else
         zvm.resolve.resolveVersion(ctx, null) catch |e| {
-            try zvm.color.print(errw, .red, "zvm: {s}\n", .{@errorName(e)});
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: {s}\n",
+                .{@errorName(e)},
+            );
             try errw.writer.flush();
 
             std.process.exit(1);
@@ -143,9 +171,19 @@ fn cmdInstall(
     ) catch |e| {
         root_progress.end();
         if (zvm.resolve.installErrorHint(e)) |hint| {
-            try zvm.color.print(errw, .red, "zvm: could not install {s}: {s}\n", .{ resolution.version, hint });
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: could not install {s}: {s}\n",
+                .{ resolution.version, hint },
+            );
         } else {
-            try zvm.color.print(errw, .red, "zvm: failed to install {s}: {s}\n", .{ resolution.version, @errorName(e) });
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: failed to install {s}: {s}\n",
+                .{ resolution.version, @errorName(e) },
+            );
         }
         try errw.writer.flush();
 
@@ -165,18 +203,26 @@ fn cmdInstall(
             out,
             .yellow,
             "warning: zig {s} was installed without checksum or signature verification\n",
-            .{
-                result.version,
-            },
+            .{result.version},
         );
     }
 
     zvm.resolve.recordUse(ctx, result.version);
 
     if (result.already_installed) {
-        try zvm.color.print(out, .dim, "zig {s} is already installed\n", .{result.version});
+        try zvm.color.print(
+            out,
+            .dim,
+            "zig {s} is already installed\n",
+            .{result.version},
+        );
     } else {
-        try zvm.color.print(out, .green, "installed zig {s}\n", .{result.version});
+        try zvm.color.print(
+            out,
+            .green,
+            "installed zig {s}\n",
+            .{result.version},
+        );
     }
 }
 
@@ -191,7 +237,10 @@ fn cmdList(
         .{ .iterate = true },
     ) catch |err| switch (err) {
         error.FileNotFound => {
-            try out.writer.print("no versions installed yet, run `zvm install <version>`\n", .{});
+            try out.writer.print(
+                "no versions installed yet, run `zvm install <version>`\n",
+                .{},
+            );
 
             return;
         },
@@ -199,24 +248,32 @@ fn cmdList(
     };
     defer dir.close(ctx.io);
 
-    const cfg = zvm.config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch zvm.config.Config{};
+    const cfg = zvm.config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch
+        zvm.config.Config{};
 
     var it = dir.iterate();
     var any = false;
     while (try it.next(ctx.io)) |entry| {
-        if (entry.kind != .directory) continue;
+        if (entry.kind != .directory)
+            continue;
 
         any = true;
 
         const is_default = cfg.default_version != null and std.mem.eql(u8, cfg.default_version.?, entry.name);
         const is_recent = cfg.last_used_version != null and std.mem.eql(u8, cfg.last_used_version.?, entry.name);
         try zvm.color.print(out, .cyan, "  {s}", .{entry.name});
-        if (is_default) try zvm.color.print(out, .cyan, "  (default)", .{});
-        if (is_recent) try zvm.color.print(out, .dim, "  (last used)", .{});
+        if (is_default)
+            try zvm.color.print(out, .cyan, "  (default)", .{});
+        if (is_recent)
+            try zvm.color.print(out, .dim, "  (last used)", .{});
         try out.writer.print("\n", .{});
     }
 
-    if (!any) try out.writer.print("no versions installed yet, run `zvm install <version>`\n", .{});
+    if (!any)
+        try out.writer.print(
+            "no versions installed yet, run `zvm install <version>`\n",
+            .{},
+        );
 }
 
 fn cmdListRemote(
@@ -224,8 +281,17 @@ fn cmdListRemote(
     out: Io.Terminal,
     errw: Io.Terminal,
 ) !void {
-    const root = zvm.index.fetchIndexObject(ctx.gpa, ctx.io, ctx.paths) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to fetch version index: {s}\n", .{@errorName(e)});
+    const root = zvm.index.fetchIndexObject(
+        ctx.gpa,
+        ctx.io,
+        ctx.paths,
+    ) catch |e| {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to fetch version index: {s}\n",
+            .{@errorName(e)},
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -234,7 +300,8 @@ fn cmdListRemote(
     var list: std.ArrayList([]const u8) = .empty;
     var it = root.iterator();
     while (it.next()) |entry| {
-        if (std.mem.eql(u8, entry.key_ptr.*, "master")) continue;
+        if (std.mem.eql(u8, entry.key_ptr.*, "master"))
+            continue;
         try list.append(ctx.gpa, entry.key_ptr.*);
     }
     std.mem.sort([]const u8, list.items, {}, struct {
@@ -245,7 +312,8 @@ fn cmdListRemote(
 
     try zvm.color.print(out, .yellow, "master", .{});
     try zvm.color.print(out, .dim, " (dev)\n", .{});
-    for (list.items) |v| try zvm.color.print(out, .cyan, "{s}\n", .{v});
+    for (list.items) |v|
+        try zvm.color.print(out, .cyan, "{s}\n", .{v});
 }
 
 fn cmdRemove(
@@ -255,14 +323,24 @@ fn cmdRemove(
     args: []const []const u8,
 ) !void {
     if (args.len == 0) {
-        try zvm.color.print(errw, .red, "usage: zvm remove <version>\n", .{});
+        try zvm.color.print(
+            errw,
+            .red,
+            "usage: zvm remove <version>\n",
+            .{},
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
     }
     const v = args[0];
     zvm.version.validate(v) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: invalid version '{s}': {s}\n", .{ v, @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: invalid version '{s}': {s}\n",
+            .{ v, @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -275,7 +353,12 @@ fn cmdRemove(
         ctx.paths.locks,
         v,
     ) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to lock {s}: {s}\n", .{ v, @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to lock {s}: {s}\n",
+            .{ v, @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -293,7 +376,12 @@ fn cmdRemove(
     defer version_lock.release(ctx.io);
 
     if (!zvm.resolve.isInstalled(ctx, dir_path)) {
-        try zvm.color.print(out, .dim, "zig {s} is not installed\n", .{v});
+        try zvm.color.print(
+            out,
+            .dim,
+            "zig {s} is not installed\n",
+            .{v},
+        );
 
         return;
     }
@@ -304,14 +392,24 @@ fn cmdRemove(
     zvm.retry.deleteTree(ctx.io, Io.Dir.cwd(), dir_path) catch |e| {
         node.end();
         root_progress.end();
-        try zvm.color.print(errw, .red, "zvm: failed to remove {s}: {s}\n", .{ v, @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to remove {s}: {s}\n",
+            .{ v, @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
     };
     node.end();
     root_progress.end();
-    try zvm.color.print(out, .green, "removed zig {s}\n", .{v});
+    try zvm.color.print(
+        out,
+        .green,
+        "removed zig {s}\n",
+        .{v},
+    );
 }
 
 fn cmdWhich(
@@ -352,7 +450,8 @@ fn cmdDefault(
     args: []const []const u8,
 ) !void {
     if (args.len == 0) {
-        const cfg = zvm.config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch zvm.config.Config{};
+        const cfg = zvm.config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch
+            zvm.config.Config{};
         if (cfg.default_version) |d| {
             try zvm.color.print(out, .cyan, "{s}\n", .{d});
         } else {
@@ -370,7 +469,12 @@ fn cmdDefault(
     }
 
     zvm.version.validate(args[0]) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: invalid version '{s}': {s}\n", .{ args[0], @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: invalid version '{s}': {s}\n",
+            .{ args[0], @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -416,7 +520,10 @@ fn helpEntry(t: Io.Terminal, command: []const u8, description: []const u8) !void
     try t.writer.print("{s}\n", .{description});
 }
 
+//
+
+const Io = std.Io;
+
 const zvm = @import("zvm");
 
 const std = @import("std");
-const Io = std.Io;

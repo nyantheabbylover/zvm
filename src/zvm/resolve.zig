@@ -108,7 +108,8 @@ fn findProjectVersion(ctx: *Context) !?ProjectVersion {
             0,
         ) catch |err| switch (err) {
             error.FileNotFound => {
-                const parent = dir.openDir(ctx.io, "..", .{}) catch return null;
+                const parent = dir.openDir(ctx.io, "..", .{}) catch
+                    return null;
                 dir.close(ctx.io);
                 dir = parent;
 
@@ -134,7 +135,8 @@ fn findProjectVersion(ctx: *Context) !?ProjectVersion {
 
 fn displayPath(ctx: *Context, dir: Io.Dir) []const u8 {
     var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const n = dir.realPath(ctx.io, &buf) catch return "build.zig.zon";
+    const n = dir.realPath(ctx.io, &buf) catch
+        return "build.zig.zon";
 
     return std.fs.path.join(ctx.gpa, &.{ buf[0..n], "build.zig.zon" }) catch "build.zig.zon";
 }
@@ -144,7 +146,12 @@ pub fn ensureInstalled(
     requested_version: []const u8,
     progress: std.Progress.Node,
 ) !InstallResult {
-    const result = try ensureInstalledInner(ctx, requested_version, progress, false);
+    const result = try ensureInstalledInner(
+        ctx,
+        requested_version,
+        progress,
+        false,
+    );
 
     return result.install;
 }
@@ -154,7 +161,12 @@ pub fn ensureInstalledForUse(
     requested_version: []const u8,
     progress: std.Progress.Node,
 ) !UseResult {
-    const result = try ensureInstalledInner(ctx, requested_version, progress, true);
+    const result = try ensureInstalledInner(
+        ctx,
+        requested_version,
+        progress,
+        true,
+    );
 
     return .{
         .install = result.install,
@@ -174,7 +186,11 @@ fn ensureInstalledInner(
     retain_lock: bool,
 ) !EnsureResult {
     try validateVersion(requested_version);
-    const resolve_label = try std.fmt.allocPrint(ctx.gpa, "resolve zig {s}", .{requested_version});
+    const resolve_label = try std.fmt.allocPrint(
+        ctx.gpa,
+        "resolve zig {s}",
+        .{requested_version},
+    );
     const resolve_node = progress.start(resolve_label, 0);
 
     const resolved = index.resolve(
@@ -378,7 +394,8 @@ fn isAffirmative(input: []const u8) bool {
 fn urlBasename(url: []const u8) []const u8 {
     const q = std.mem.indexOfScalar(u8, url, '?') orelse url.len;
     const path_part = url[0..q];
-    const slash = std.mem.lastIndexOfScalar(u8, path_part, '/') orelse return path_part;
+    const slash = std.mem.lastIndexOfScalar(u8, path_part, '/') orelse
+        return path_part;
 
     return path_part[slash + 1 ..];
 }
@@ -394,7 +411,7 @@ const findMinimumZigVersion = @import("zon_scan.zig").findMinimumZigVersion;
 const mirrorUrl = @import("mirrors.zig").mirrorUrl;
 const validateVersion = @import("version.zig").validate;
 
-//
+const Io = std.Io;
 
 const config = @import("config.zig");
 const debug = @import("debug.zig");
@@ -406,4 +423,3 @@ const net = @import("net.zig");
 const retry = @import("retry.zig");
 
 const std = @import("std");
-const Io = std.Io;

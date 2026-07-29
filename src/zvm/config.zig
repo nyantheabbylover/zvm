@@ -5,11 +5,22 @@ pub const Config = struct {
 
 pub fn load(gpa: std.mem.Allocator, io: Io, path: []const u8) !Config {
     const cwd = Io.Dir.cwd();
-    const text = cwd.readFileAlloc(io, path, gpa, .limited(1 << 16)) catch |err| switch (err) {
+    const text = cwd.readFileAlloc(
+        io,
+        path,
+        gpa,
+        .limited(1 << 16),
+    ) catch |err| switch (err) {
         error.FileNotFound => return Config{},
         else => return err,
     };
-    const parsed = std.json.parseFromSlice(Config, gpa, text, .{ .ignore_unknown_fields = true }) catch return Config{};
+    const parsed = std.json.parseFromSlice(
+        Config,
+        gpa,
+        text,
+        .{ .ignore_unknown_fields = true },
+    ) catch
+        return Config{};
 
     return parsed.value;
 }
@@ -55,9 +66,13 @@ fn save(gpa: std.mem.Allocator, io: Io, path: []const u8, cfg: Config) !void {
     try atomic_write.writeFile(io, path, out.written());
 }
 
-const atomic_write = @import("atomic_write.zig");
-const lock = @import("lock.zig");
+//
+
 const Paths = @import("paths.zig").Paths;
 
-const std = @import("std");
 const Io = std.Io;
+
+const atomic_write = @import("atomic_write.zig");
+const lock = @import("lock.zig");
+
+const std = @import("std");

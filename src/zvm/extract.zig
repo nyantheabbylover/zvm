@@ -78,7 +78,8 @@ fn findSingleTopLevelDir(gpa: std.mem.Allocator, io: Io, scratch_dir: []const u8
         } else {
             only = null;
         }
-        if (count > 1) break;
+        if (count > 1)
+            break;
     }
 
     if (count == 1 and only != null) {
@@ -87,6 +88,8 @@ fn findSingleTopLevelDir(gpa: std.mem.Allocator, io: Io, scratch_dir: []const u8
 
     return gpa.dupe(u8, scratch_dir);
 }
+
+//
 
 const Io = std.Io;
 

@@ -60,8 +60,10 @@ fn attempt(
     var r_buf: [8 * 1024]u8 = undefined;
     var res = req.receiveHead(&r_buf) catch |err|
         return http_timeout.translateError(&req, err);
-    if (res.head.status == .not_found) return error.VersionNotFound;
-    if (res.head.status != .ok) return error.HttpRequestFailed;
+    if (res.head.status == .not_found)
+        return error.VersionNotFound;
+    if (res.head.status != .ok)
+        return error.HttpRequestFailed;
 
     const total: usize = @intCast(res.head.content_length orelse 0);
     const node = progress_parent.start(label, total);
@@ -88,7 +90,10 @@ fn attempt(
 
     var downloaded: usize = 0;
     while (true) {
-        const n = body.stream(&fw.interface, .limited(1 << 16)) catch |err| switch (err) {
+        const n = body.stream(
+            &fw.interface,
+            .limited(1 << 16),
+        ) catch |err| switch (err) {
             error.EndOfStream => break,
             else => |e| return http_timeout.translateError(&req, e),
         };
@@ -104,15 +109,19 @@ fn attempt(
         std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
         var hex_buf: [64]u8 = undefined;
         const hex = std.fmt.bufPrint(&hex_buf, "{x}", .{digest}) catch unreachable;
-        if (!std.ascii.eqlIgnoreCase(hex, expected)) return error.ChecksumMismatch;
+        if (!std.ascii.eqlIgnoreCase(hex, expected))
+            return error.ChecksumMismatch;
     } else if (minisign_signature) |signature| {
         try minisign.verifyFile(io, dest_path, signature);
     }
 }
+
+//
+
+const Io = std.Io;
 
 const debug = @import("debug.zig");
 const http_timeout = @import("http_timeout.zig");
 const minisign = @import("minisign.zig");
 
 const std = @import("std");
-const Io = std.Io;

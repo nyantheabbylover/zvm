@@ -24,6 +24,7 @@ pub const Paths = struct {
     /// on Windows, XDG_DATA_HOME (or ~/.local/share) elsewhere.
     pub fn discover(gpa: std.mem.Allocator, environ: std.process.Environ) !Paths {
         const base = try baseDir(gpa, environ);
+
         debug.log("zvm home: {s}", .{base});
 
         return .{
@@ -59,7 +60,9 @@ pub const Paths = struct {
 };
 
 fn baseDir(gpa: std.mem.Allocator, environ: std.process.Environ) ![]const u8 {
-    if (environ.getAlloc(gpa, "ZVM_HOME")) |v| return v else |err| switch (err) {
+    if (environ.getAlloc(gpa, "ZVM_HOME")) |v|
+        return v
+    else |err| switch (err) {
         error.EnvironmentVariableMissing => {},
         else => return err,
     }
@@ -82,8 +85,11 @@ fn baseDir(gpa: std.mem.Allocator, environ: std.process.Environ) ![]const u8 {
     return std.fs.path.join(gpa, &.{ home, ".local", "share", "zvm" });
 }
 
+//
+
+const Io = std.Io;
+
 const debug = @import("debug.zig");
 
 const std = @import("std");
-const Io = std.Io;
 const builtin = @import("builtin");

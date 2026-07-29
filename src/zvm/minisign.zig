@@ -109,7 +109,9 @@ fn trimCr(line: []const u8) []const u8 {
     return std.mem.trimEnd(u8, line, "\r");
 }
 
+//
+
 const Ed25519 = std.crypto.sign.Ed25519;
+const Io = std.Io;
 
 const std = @import("std");
-const Io = std.Io;

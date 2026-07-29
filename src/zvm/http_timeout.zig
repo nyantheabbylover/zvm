@@ -1,18 +1,15 @@
-const builtin = @import("builtin");
-const std = @import("std");
-const Io = std.Io;
-
 const read_timeout_ms = 5 * std.time.ms_per_s;
 
 /// Installs a per-read timeout on the connection used by
-/// `request`. 
+/// `request`.
 /// This covers waiting for response headers and every
 /// subsequent body read.
 /// The standard HTTP client has no request-read timeout
 /// in Zig 0.16, so this wraps its underlying stream reader
 /// instead.
 pub fn install(request: *std.http.Client.Request) void {
-    const connection = request.connection orelse return;
+    const connection = request.connection orelse
+        return;
     connection.stream_reader.interface.vtable = &.{
         .stream = stream,
         .readVec = readVec,
@@ -27,7 +24,8 @@ pub fn translateError(request: *const std.http.Client.Request, err: anyerror) an
     if (err != error.ReadFailed)
         return err;
 
-    const connection = request.connection orelse return err;
+    const connection = request.connection orelse
+        return err;
     if (connection.stream_reader.err) |read_err| {
         if (read_err == error.Timeout)
             return error.Timeout;
@@ -69,10 +67,12 @@ fn readVec(reader: *Io.Reader, data: [][]u8) Io.Reader.Error!usize {
     return n;
 }
 
-fn readSocket(stream_reader: *Io.net.Stream.Reader, dest: [][]u8) Io.net.Stream.Reader.Error!usize {
-    if (comptime builtin.os.tag == .windows) {
+fn readSocket(
+    stream_reader: *Io.net.Stream.Reader,
+    dest: [][]u8,
+) Io.net.Stream.Reader.Error!usize {
+    if (comptime builtin.os.tag == .windows)
         return readSocketWindows(stream_reader, dest);
-    }
 
     return readSocketPosix(stream_reader, dest);
 }
@@ -144,3 +144,10 @@ fn blockingRead(
 ) Io.net.Stream.Reader.Error!usize {
     return io.vtable.netRead(io.userdata, socket, dest);
 }
+
+//
+
+const Io = std.Io;
+
+const builtin = @import("builtin");
+const std = @import("std");

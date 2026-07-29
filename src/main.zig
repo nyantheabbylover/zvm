@@ -14,14 +14,27 @@ pub fn main(init: std.process.Init) !void {
         .mode = zvm.color.detectMode(io, .stderr(), gpa, init.minimal.environ),
     };
 
-    const paths = zvm.paths.Paths.discover(gpa, init.minimal.environ) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to determine cache directory: {s}\n", .{@errorName(e)});
+    const paths = zvm.paths.Paths.discover(
+        gpa,
+        init.minimal.environ,
+    ) catch |e| {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to determine cache directory: {s}\n",
+            .{@errorName(e)},
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
     };
     paths.ensureLayout(io) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to create {s}: {s}\n", .{ paths.base, @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to create {s}: {s}\n",
+            .{ paths.base, @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -34,9 +47,16 @@ pub fn main(init: std.process.Init) !void {
         passthrough_start = 2;
     }
 
-    var ctx = zvm.resolve.Context{ .gpa = gpa, .io = io, .paths = paths };
+    var ctx = zvm.resolve.Context{
+        .gpa = gpa,
+        .io = io,
+        .paths = paths,
+    };
 
-    const resolution = zvm.resolve.resolveVersion(&ctx, override) catch |e| {
+    const resolution = zvm.resolve.resolveVersion(
+        &ctx,
+        override,
+    ) catch |e| {
         try zvm.color.print(
             errw,
             .red,
@@ -47,9 +67,7 @@ pub fn main(init: std.process.Init) !void {
             \\({s})
             \\
         ,
-            .{
-                @errorName(e),
-            },
+            .{@errorName(e)},
         );
         try errw.writer.flush();
 
@@ -69,9 +87,19 @@ pub fn main(init: std.process.Init) !void {
     ) catch |e| {
         root_progress.end();
         if (zvm.resolve.installErrorHint(e)) |hint| {
-            try zvm.color.print(errw, .red, "zvm: could not install zig {s}: {s}\n", .{ resolution.version, hint });
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: could not install zig {s}: {s}\n",
+                .{ resolution.version, hint },
+            );
         } else {
-            try zvm.color.print(errw, .red, "zvm: failed to install zig {s}: {s}\n", .{ resolution.version, @errorName(e) });
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: failed to install zig {s}: {s}\n",
+                .{ resolution.version, @errorName(e) },
+            );
         }
         try errw.writer.flush();
 
@@ -104,7 +132,12 @@ pub fn main(init: std.process.Init) !void {
     zvm.debug.log("exec: {s}", .{exe_path});
     try use_result.version_lock.inheritAcrossExec();
     const code = zvm.exec.run(io, real_argv.items) catch |e| {
-        try zvm.color.print(errw, .red, "zvm: failed to launch {s}: {s}\n", .{ exe_path, @errorName(e) });
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: failed to launch {s}: {s}\n",
+            .{ exe_path, @errorName(e) },
+        );
         try errw.writer.flush();
 
         std.process.exit(1);
@@ -114,7 +147,10 @@ pub fn main(init: std.process.Init) !void {
     std.process.exit(code);
 }
 
+//
+
+const Io = std.Io;
+
 const zvm = @import("zvm");
 
 const std = @import("std");
-const Io = std.Io;

@@ -1,3 +1,6 @@
+const index_url = "https://ziglang.org/download/index.json";
+const ttl_seconds: i64 = 60 * 60;
+
 pub const Resolved = struct {
     /// Concrete version (e.g. "master" resolves to the actual dev snapshot version string reported by the index).
     version: []const u8,
@@ -7,9 +10,6 @@ pub const Resolved = struct {
     shasum: ?[]const u8,
     size: ?u64,
 };
-
-const index_url = "https://ziglang.org/download/index.json";
-const ttl_seconds: i64 = 60 * 60;
 
 pub fn fetchIndexObject(gpa: std.mem.Allocator, io: Io, paths: Paths) !std.json.ObjectMap {
     const body = try cached_fetch.fetch(
@@ -39,7 +39,8 @@ pub fn resolve(gpa: std.mem.Allocator, io: Io, paths: Paths, requested: []const 
     const root = try fetchIndexObject(gpa, io, paths);
 
     const key = if (std.mem.eql(u8, requested, "latest"))
-        latestStableKey(root) orelse return error.NoStableVersionFound
+        latestStableKey(root) orelse
+            return error.NoStableVersionFound
     else
         requested;
 
@@ -59,11 +60,7 @@ pub fn resolve(gpa: std.mem.Allocator, io: Io, paths: Paths, requested: []const 
     const r = try createUnlisted(gpa, key);
     debug.log(
         "resolved '{s}' -> zig {s} (not in index, unverified: {s})",
-        .{
-            requested,
-            r.version,
-            r.tarball_url,
-        },
+        .{ requested, r.version, r.tarball_url },
     );
 
     return r;
@@ -75,7 +72,8 @@ fn latestStableKey(root: std.json.ObjectMap) ?[]const u8 {
     var it = root.iterator();
     while (it.next()) |entry| {
         const key = entry.key_ptr.*;
-        if (std.mem.eql(u8, key, "master")) continue;
+        if (std.mem.eql(u8, key, "master"))
+            continue;
         if (best == null or compareStableVersion(key, best.?) == .gt) best = key;
     }
 
@@ -83,16 +81,20 @@ fn latestStableKey(root: std.json.ObjectMap) ?[]const u8 {
 }
 
 fn pickFromIndex(root: std.json.ObjectMap, key: []const u8) !?Resolved {
-    const entry = root.get(key) orelse return null;
+    const entry = root.get(key) orelse
+        return null;
     const obj = entry.object;
     const version = if (obj.get("version")) |v| v.string else key;
     try validateVersion(version);
-    const t = obj.get(target.nativeTargetString()) orelse return null;
+    const t = obj.get(target.nativeTargetString()) orelse
+        return null;
     const tobj = t.object;
-    const tarball = tobj.get("tarball") orelse return null;
+    const tarball = tobj.get("tarball") orelse
+        return null;
 
     const size: ?u64 = blk: {
-        const s = tobj.get("size") orelse break :blk null;
+        const s = tobj.get("size") orelse
+            break :blk null;
         break :blk switch (s) {
             .integer => |i| @intCast(i),
             else => null,
@@ -126,14 +128,16 @@ fn createUnlisted(gpa: std.mem.Allocator, version: []const u8) !Resolved {
     };
 }
 
-const Paths = @import("paths.zig").Paths;
+//
 
+const Paths = @import("paths.zig").Paths;
 const validateVersion = @import("version.zig").validate;
 const compareStableVersion = @import("version.zig").compareStable;
+
+const Io = std.Io;
 
 const cached_fetch = @import("cached_fetch.zig");
 const target = @import("target.zig");
 const debug = @import("debug.zig");
 
 const std = @import("std");
-const Io = std.Io;

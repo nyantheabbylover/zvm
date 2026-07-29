@@ -39,15 +39,23 @@ pub fn fetch(
 
     debug.log("fetching {s}", .{url});
     const result = net.get(gpa, io, url) catch |err| {
-        debug.log("fetch failed ({s}), falling back to any stale cache", .{@errorName(err)});
+        debug.log(
+            "fetch failed ({s}), falling back to any stale cache",
+            .{@errorName(err)},
+        );
 
-        return readAny(gpa, io, cache_path) catch return err;
+        return readAny(gpa, io, cache_path) catch
+            return err;
     };
 
     if (result.status != .ok) {
-        debug.log("fetch returned HTTP {d}, falling back to any stale cache", .{@intFromEnum(result.status)});
+        debug.log(
+            "fetch returned HTTP {d}, falling back to any stale cache",
+            .{@intFromEnum(result.status)},
+        );
 
-        return readAny(gpa, io, cache_path) catch return error.HttpRequestFailed;
+        return readAny(gpa, io, cache_path) catch
+            return error.HttpRequestFailed;
     }
 
     writeCache(io, cache_path, meta_path, result.body) catch {};
@@ -60,13 +68,16 @@ fn readAny(gpa: std.mem.Allocator, io: Io, path: []const u8) ![]u8 {
 }
 
 fn readFresh(gpa: std.mem.Allocator, io: Io, cache_path: []const u8, meta_path: []const u8, ttl_seconds: i64) ?[]u8 {
-    const meta_text = Io.Dir.cwd().readFileAlloc(io, meta_path, gpa, .limited(64)) catch return null;
+    const meta_text = Io.Dir.cwd().readFileAlloc(io, meta_path, gpa, .limited(64)) catch
+        return null;
     defer gpa.free(meta_text);
 
     const trimmed = std.mem.trim(u8, meta_text, " \t\r\n");
-    const fetched = std.fmt.parseInt(i64, trimmed, 10) catch return null;
+    const fetched = std.fmt.parseInt(i64, trimmed, 10) catch
+        return null;
 
-    if (Io.Timestamp.now(io, .real).toSeconds() - fetched > ttl_seconds) return null;
+    if (Io.Timestamp.now(io, .real).toSeconds() - fetched > ttl_seconds)
+        return null;
 
     return readAny(gpa, io, cache_path) catch null;
 }
@@ -86,10 +97,13 @@ fn writeFile(io: Io, path: []const u8, data: []const u8) !void {
     try atomic_write.writeFile(io, path, data);
 }
 
+//
+
+const Io = std.Io;
+
 const atomic_write = @import("atomic_write.zig");
+const debug = @import("debug.zig");
 const lock = @import("lock.zig");
 const net = @import("net.zig");
-const debug = @import("debug.zig");
 
 const std = @import("std");
-const Io = std.Io;

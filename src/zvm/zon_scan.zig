@@ -11,7 +11,8 @@ pub fn findMinimumZigVersion(source: [:0]const u8) ?[]const u8 {
 
     while (true) {
         const t = tokenizer.next();
-        if (t.tag == .eof) break;
+        if (t.tag == .eof)
+            break;
         switch (state) {
             .none => state = if (t.tag == .period) .saw_period else .none,
             .saw_period => {
@@ -27,7 +28,8 @@ pub fn findMinimumZigVersion(source: [:0]const u8) ?[]const u8 {
             .saw_equal => {
                 if (t.tag == .string_literal) {
                     const raw = source[t.loc.start..t.loc.end];
-                    if (raw.len >= 2) return raw[1 .. raw.len - 1];
+                    if (raw.len >= 2)
+                        return raw[1 .. raw.len - 1];
                 }
                 state = .none;
             },
@@ -36,5 +38,7 @@ pub fn findMinimumZigVersion(source: [:0]const u8) ?[]const u8 {
 
     return null;
 }
+
+//
 
 const std = @import("std");

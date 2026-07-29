@@ -5,12 +5,14 @@
 pub var enabled: bool = false;
 
 pub fn initFromEnv(gpa: std.mem.Allocator, environ: std.process.Environ) void {
-    const val = environ.getAlloc(gpa, "ZVM_DEBUG") catch return;
+    const val = environ.getAlloc(gpa, "ZVM_DEBUG") catch
+        return;
     enabled = val.len > 0 and !std.mem.eql(u8, val, "0");
 }
 
 pub fn log(comptime fmt: []const u8, args: anytype) void {
-    if (!enabled) return;
+    if (!enabled)
+        return;
 
     var buf: [256]u8 = undefined;
     const t = std.debug.lockStderr(&buf).terminal();
@@ -21,5 +23,7 @@ pub fn log(comptime fmt: []const u8, args: anytype) void {
     t.setColor(.reset) catch {};
     t.writer.flush() catch {};
 }
+
+//
 
 const std = @import("std");

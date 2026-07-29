@@ -10,7 +10,8 @@ pub const Held = struct {
     /// POSIX files opened by Zig normally have `FD_CLOEXEC` set. Clear it so
     /// this lock remains held after the shim replaces itself with `zig`.
     pub fn inheritAcrossExec(self: *Held) !void {
-        if (comptime builtin.target.os.tag == .windows) return;
+        if (comptime builtin.target.os.tag == .windows)
+            return;
 
         while (true) {
             const rc = std.posix.system.fcntl(self.file.handle, std.posix.F.SETFD, 0);
@@ -56,25 +57,26 @@ fn acquireWithMode(
     });
     errdefer file.close(io);
 
-    if (try file.tryLock(io, mode)) {
+    if (try file.tryLock(io, mode))
         return .{ .file = file };
-    }
+
     if (!wait) {
         file.close(io);
 
         return null;
     }
 
-    {
-        debug.log("waiting for lock: {s}", .{name});
-        try file.lock(io, mode);
-    }
+    debug.log("waiting for lock: {s}", .{name});
+    try file.lock(io, mode);
 
     return .{ .file = file };
 }
 
+//
+
+const Io = std.Io;
+
 const debug = @import("debug.zig");
 
 const std = @import("std");
-const Io = std.Io;
 const builtin = @import("builtin");

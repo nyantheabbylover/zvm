@@ -1,9 +1,9 @@
+pub const max_body_bytes: usize = 8 << 20;
+
 pub const GetResult = struct {
     status: std.http.Status,
     body: []u8,
 };
-
-pub const max_body_bytes: usize = 8 << 20;
 
 /// One-shot GET, buffering the whole (transparently decompressed) response
 /// body into memory, capped at `max_body_bytes`. Meant for small payloads
@@ -20,11 +20,14 @@ pub fn get(gpa: std.mem.Allocator, io: Io, url: []const u8) !GetResult {
     try req.sendBodiless();
 
     var r_buf: [max_body_bytes / 1024]u8 = undefined;
-    var res = req.receiveHead(&r_buf) catch |err|
+    var res = req.receiveHead(
+        &r_buf,
+    ) catch |err|
         return http_timeout.translateError(&req, err);
 
     if (res.head.content_length) |len| {
-        if (len > max_body_bytes) return error.ResponseTooLarge;
+        if (len > max_body_bytes)
+            return error.ResponseTooLarge;
     }
 
     const d_buf: []u8 = switch (res.head.content_encoding) {
@@ -44,12 +47,16 @@ pub fn get(gpa: std.mem.Allocator, io: Io, url: []const u8) !GetResult {
 
     var total: usize = 0;
     while (true) {
-        const n = body.stream(&collected.writer, .limited(64 * 1024)) catch |err| switch (err) {
+        const n = body.stream(
+            &collected.writer,
+            .limited(64 * 1024),
+        ) catch |err| switch (err) {
             error.EndOfStream => break,
             else => |e| return http_timeout.translateError(&req, e),
         };
         total += n;
-        if (total > max_body_bytes) return error.ResponseTooLarge;
+        if (total > max_body_bytes)
+            return error.ResponseTooLarge;
     }
 
     return .{
@@ -58,6 +65,10 @@ pub fn get(gpa: std.mem.Allocator, io: Io, url: []const u8) !GetResult {
     };
 }
 
-const std = @import("std");
-const http_timeout = @import("http_timeout.zig");
+//
+
 const Io = std.Io;
+
+const http_timeout = @import("http_timeout.zig");
+
+const std = @import("std");
