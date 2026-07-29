@@ -4,8 +4,8 @@
 /// unchanged).
 pub var enabled: bool = false;
 
-pub fn initFromEnv(gpa: std.mem.Allocator, environ: std.process.Environ) void {
-    const val = environ.getAlloc(gpa, "ZVM_DEBUG") catch
+pub fn initFromEnv(environ: std.process.Environ.Map) void {
+    const val = environ.get("ZVM_DEBUG") orelse
         return;
     enabled = val.len > 0 and !std.mem.eql(u8, val, "0");
 }

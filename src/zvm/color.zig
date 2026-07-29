@@ -1,18 +1,20 @@
-pub fn detectMode(io: Io, file: Io.File, gpa: std.mem.Allocator, environ: std.process.Environ) Io.Terminal.Mode {
-    const no_color = envFlag(gpa, environ, "NO_COLOR");
-    const force = envFlag(gpa, environ, "CLICOLOR_FORCE");
+pub fn detectMode(io: Io, file: Io.File, environ: std.process.Environ.Map) Io.Terminal.Mode {
+    const no_color = envFlag(environ, "NO_COLOR");
+    const force = envFlag(environ, "CLICOLOR_FORCE");
 
     return Io.Terminal.Mode.detect(io, file, no_color, force) catch .no_color;
 }
 
-fn envFlag(gpa: std.mem.Allocator, environ: std.process.Environ, key: []const u8) bool {
-    const val = environ.getAlloc(gpa, key) catch
-        return false;
-
-    return val.len > 0;
+fn envFlag(environ: std.process.Environ.Map, key: []const u8) bool {
+    return if (environ.get(key)) |val| val.len > 0 else false;
 }
 
-pub fn print(t: Io.Terminal, color: Io.Terminal.Color, comptime fmt: []const u8, args: anytype) !void {
+pub fn print(
+    t: Io.Terminal,
+    color: Io.Terminal.Color,
+    comptime fmt: []const u8,
+    args: anytype,
+) !void {
     t.setColor(color) catch {};
     try t.writer.print(fmt, args);
     t.setColor(.reset) catch {};

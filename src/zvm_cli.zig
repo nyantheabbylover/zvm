@@ -2,7 +2,9 @@ pub fn main(init: std.process.Init) !void {
     const gpa = init.arena.allocator();
     const io = init.io;
     const raw_argv = try init.minimal.args.toSlice(gpa);
-    zvm.debug.initFromEnv(gpa, init.minimal.environ);
+    var environ = try init.minimal.environ.createMap(gpa);
+    defer environ.deinit();
+    zvm.debug.initFromEnv(environ);
 
     var argv_list: std.ArrayList([]const u8) = .empty;
     var skip_verification = false;
@@ -30,19 +32,19 @@ pub fn main(init: std.process.Init) !void {
     var stdout_fw: Io.File.Writer = .init(.stdout(), io, &stdout_buf);
     const out: Io.Terminal = .{
         .writer = &stdout_fw.interface,
-        .mode = zvm.color.detectMode(io, .stdout(), gpa, init.minimal.environ),
+        .mode = zvm.color.detectMode(io, .stdout(), environ),
     };
 
     var stderr_buf: [4096]u8 = undefined;
     var stderr_fw: Io.File.Writer = .init(.stderr(), io, &stderr_buf);
     const errw: Io.Terminal = .{
         .writer = &stderr_fw.interface,
-        .mode = zvm.color.detectMode(io, .stderr(), gpa, init.minimal.environ),
+        .mode = zvm.color.detectMode(io, .stderr(), environ),
     };
 
     const paths = zvm.paths.Paths.discover(
         gpa,
-        init.minimal.environ,
+        environ,
     ) catch |e| {
         try zvm.color.print(
             errw,

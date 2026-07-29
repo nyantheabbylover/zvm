@@ -22,7 +22,7 @@ pub const Paths = struct {
 
     /// `ZVM_HOME` overrides everything. Otherwise per-user: LOCALAPPDATA
     /// on Windows, XDG_DATA_HOME (or ~/.local/share) elsewhere.
-    pub fn discover(gpa: std.mem.Allocator, environ: std.process.Environ) !Paths {
+    pub fn discover(gpa: std.mem.Allocator, environ: std.process.Environ.Map) !Paths {
         const base = try baseDir(gpa, environ);
 
         debug.log("zvm home: {s}", .{base});
@@ -59,28 +59,23 @@ pub const Paths = struct {
     }
 };
 
-fn baseDir(gpa: std.mem.Allocator, environ: std.process.Environ) ![]const u8 {
-    if (environ.getAlloc(gpa, "ZVM_HOME")) |v|
-        return v
-    else |err| switch (err) {
-        error.EnvironmentVariableMissing => {},
-        else => return err,
-    }
+fn baseDir(gpa: std.mem.Allocator, environ: std.process.Environ.Map) ![]const u8 {
+    if (environ.get("ZVM_HOME")) |v|
+        return gpa.dupe(u8, v);
 
     if (builtin.target.os.tag == .windows) {
-        const local = try environ.getAlloc(gpa, "LOCALAPPDATA");
+        const local = environ.get("LOCALAPPDATA") orelse
+            return error.EnvironmentVariableMissing;
 
         return std.fs.path.join(gpa, &.{ local, "zvm" });
     }
 
-    if (environ.getAlloc(gpa, "XDG_DATA_HOME")) |v| {
+    if (environ.get("XDG_DATA_HOME")) |v| {
         return std.fs.path.join(gpa, &.{ v, "zvm" });
-    } else |err| switch (err) {
-        error.EnvironmentVariableMissing => {},
-        else => return err,
     }
 
-    const home = try environ.getAlloc(gpa, "HOME");
+    const home = environ.get("HOME") orelse
+        return error.EnvironmentVariableMissing;
 
     return std.fs.path.join(gpa, &.{ home, ".local", "share", "zvm" });
 }
