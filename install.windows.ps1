@@ -239,6 +239,10 @@ $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 $pathEntries = @()
 if ($userPath) { $pathEntries = $userPath -split ";" }
 $pathAvailable = ($env:PATH -split ";") -contains $binDir
+if (-not $pathAvailable) {
+    $env:PATH = if ($env:PATH) { "$binDir;$env:PATH" } else { $binDir }
+    $pathAvailable = $true
+}
 $pathConfigured = $false
 
 if ($pathEntries -contains $binDir) {

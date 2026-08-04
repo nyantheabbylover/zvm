@@ -201,6 +201,10 @@ path_available=0
 case ":$PATH:" in
   *":$bin_dir:"*) path_available=1 ;;
 esac
+if [ "$path_available" = "0" ]; then
+  PATH="$bin_dir:$PATH"
+  export PATH
+fi
 path_configured=0
 
 print_path_command() {
@@ -208,86 +212,83 @@ print_path_command() {
   printf '  export PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir"
 }
 
-case ":$PATH:" in
-  *":$bin_dir:"*)
-    path_configured=1
-    echo "$bin_dir is already on your PATH."
-    ;;
-  *)
-    profile=""
-    supported_shell=1
+if [ "$path_available" = "1" ]; then
+  path_configured=1
+  echo "$bin_dir is already on your PATH."
+else
+  profile=""
+  supported_shell=1
 
-    case "${SHELL:-}" in
-      */zsh) profile="$HOME/.zshrc" ;;
-      */bash) profile="$HOME/.bashrc" ;;
-      */fish) profile="$HOME/.config/fish/config.fish" ;;
-      *) supported_shell=0 ;;
-    esac
+  case "${SHELL:-}" in
+    */zsh) profile="$HOME/.zshrc" ;;
+    */bash) profile="$HOME/.bashrc" ;;
+    */fish) profile="$HOME/.config/fish/config.fish" ;;
+    *) supported_shell=0 ;;
+  esac
 
-    if [ "$supported_shell" = "0" ]; then
-      if [ "$path_mode" = "yes" ]; then
-        echo "error: --add-to-path requires bash, zsh, or fish so zvm can choose a profile file." >&2
-        echo "Add this to your shell configuration manually:" >&2
-        print_path_command >&2
-        exit 1
+  if [ "$supported_shell" = "0" ]; then
+    if [ "$path_mode" = "yes" ]; then
+      echo "error: --add-to-path requires bash, zsh, or fish so zvm can choose a profile file." >&2
+      echo "Add this to your shell configuration manually:" >&2
+      print_path_command >&2
+      exit 1
+    fi
+
+    if [ "$path_mode" = "no" ]; then
+      echo "Skipped PATH setup (--no-add-to-path)."
+      print_path_command
+    else
+      if [ -n "${SHELL:-}" ]; then
+        shell_name="${SHELL##*/}"
+        echo "Your shell ($shell_name) is not supported for automatic PATH setup."
+      else
+        echo "Your shell could not be identified, so PATH was not changed."
       fi
+      echo "For a POSIX-compatible shell, add this to its configuration manually:"
+      print_path_command
+    fi
+  else
+    reply="n"
+    interactive_terminal=0
+    if [ "$path_mode" = "yes" ] || { [ "$path_mode" = "auto" ] && [ "$yes" = "1" ]; }; then
+      reply="Y"
+    elif [ "$path_mode" = "no" ]; then
+      reply="n"
+    elif [ -t 1 ] && printf '\nAdd %s to PATH in %s? [Y/n] ' "$bin_dir" "$profile" >/dev/tty && read -r reply </dev/tty; then
+      reply="${reply:-Y}"
+      interactive_terminal=1
+    fi
 
+    case "$reply" in
+      [Yy]*)
+      mkdir -p "$(dirname "$profile")"
+      if [ "${profile##*fish}" != "$profile" ]; then
+        escaped_bin_dir="$(printf '%s' "$bin_dir" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')"
+        printf '\nfish_add_path "%s"\n' "$escaped_bin_dir" >>"$profile"
+      else
+        quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
+        printf '\nexport PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir" >>"$profile"
+      fi
+      path_configured=1
+      echo "Added to $profile. Restart your shell to pick it up."
+      ;;
+      *)
       if [ "$path_mode" = "no" ]; then
         echo "Skipped PATH setup (--no-add-to-path)."
-        print_path_command
+      elif [ "$interactive_terminal" = "1" ]; then
+        echo "Skipped. Add this to your shell config manually:"
       else
-        if [ -n "${SHELL:-}" ]; then
-          shell_name="${SHELL##*/}"
-          echo "Your shell ($shell_name) is not supported for automatic PATH setup."
-        else
-          echo "Your shell could not be identified, so PATH was not changed."
-        fi
-        echo "For a POSIX-compatible shell, add this to its configuration manually:"
-        print_path_command
+        echo "No interactive terminal was available, so PATH was not changed."
+        echo "Add this to your shell config manually:"
       fi
-    else
-      reply="n"
-      interactive_terminal=0
-      if [ "$path_mode" = "yes" ] || { [ "$path_mode" = "auto" ] && [ "$yes" = "1" ]; }; then
-        reply="Y"
-      elif [ "$path_mode" = "no" ]; then
-        reply="n"
-      elif [ -t 1 ] && printf '\nAdd %s to PATH in %s? [Y/n] ' "$bin_dir" "$profile" >/dev/tty && read -r reply </dev/tty; then
-        reply="${reply:-Y}"
-        interactive_terminal=1
-      fi
-
-      case "$reply" in
-        [Yy]*)
-        mkdir -p "$(dirname "$profile")"
-        if [ "${profile##*fish}" != "$profile" ]; then
-          escaped_bin_dir="$(printf '%s' "$bin_dir" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')"
-          printf '\nfish_add_path "%s"\n' "$escaped_bin_dir" >>"$profile"
-        else
-          quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
-          printf '\nexport PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir" >>"$profile"
-        fi
-        path_configured=1
-        echo "Added to $profile. Restart your shell to pick it up."
-        ;;
-        *)
-        if [ "$path_mode" = "no" ]; then
-          echo "Skipped PATH setup (--no-add-to-path)."
-        elif [ "$interactive_terminal" = "1" ]; then
-          echo "Skipped. Add this to your shell config manually:"
-        else
-          echo "No interactive terminal was available, so PATH was not changed."
-          echo "Add this to your shell config manually:"
-        fi
-        print_path_command
-        ;;
-      esac
-    fi
-    ;;
-esac
+      print_path_command
+      ;;
+    esac
+  fi
+fi
 
 echo
-if [ "$path_available" = "1" ]; then
+if [ "$path_available" = "1" ] || [ "${ZVM_INSTALLER_SOURCE_MODE:-}" = "1" ]; then
   echo "Done. Try: zvm version"
 elif [ "$path_configured" = "1" ]; then
   echo "Done. Restart your shell and try: zvm version"
