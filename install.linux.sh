@@ -8,10 +8,27 @@ set -eu
 
 build_from_source=0
 force=0
+yes=0
+path_mode="auto"
 for arg in "$@"; do
   case "$arg" in
     --build) build_from_source=1 ;;
     --force) force=1 ;;
+    -y | --yes) yes=1 ;;
+    --add-to-path)
+      if [ "$path_mode" = "no" ]; then
+        echo "error: --add-to-path and --no-add-to-path cannot be used together" >&2
+        exit 1
+      fi
+      path_mode="yes"
+      ;;
+    --no-add-to-path)
+      if [ "$path_mode" = "yes" ]; then
+        echo "error: --add-to-path and --no-add-to-path cannot be used together" >&2
+        exit 1
+      fi
+      path_mode="no"
+      ;;
     *)
       echo "error: unknown argument: $arg" >&2
       exit 1
@@ -69,7 +86,7 @@ copy_installed_binary() {
 
     reply="n"
     interactive_terminal=0
-    if [ -t 1 ] && [ -r /dev/tty ]; then
+    if [ "$yes" = "0" ] && [ -t 1 ] && [ -r /dev/tty ]; then
       printf 'Terminate these process(es) and retry? [y/N] ' >/dev/tty
       if read -r reply </dev/tty; then
         interactive_terminal=1
@@ -186,6 +203,11 @@ case ":$PATH:" in
 esac
 path_configured=0
 
+print_path_command() {
+  quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
+  printf '  export PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir"
+}
+
 case ":$PATH:" in
   *":$bin_dir:"*)
     path_configured=1
@@ -203,19 +225,34 @@ case ":$PATH:" in
     esac
 
     if [ "$supported_shell" = "0" ]; then
-      if [ -n "${SHELL:-}" ]; then
-      	shell_name="${SHELL##*/}"
-        echo "Your shell ($shell_name) is not supported for automatic PATH setup."
-      else
-        echo "Your shell could not be identified, so PATH was not changed."
+      if [ "$path_mode" = "yes" ]; then
+        echo "error: --add-to-path requires bash, zsh, or fish so zvm can choose a profile file." >&2
+        echo "Add this to your shell configuration manually:" >&2
+        print_path_command >&2
+        exit 1
       fi
-      echo "For a POSIX-compatible shell, add this to its configuration manually:"
-      quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
-      printf '  export PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir"
+
+      if [ "$path_mode" = "no" ]; then
+        echo "Skipped PATH setup (--no-add-to-path)."
+        print_path_command
+      else
+        if [ -n "${SHELL:-}" ]; then
+          shell_name="${SHELL##*/}"
+          echo "Your shell ($shell_name) is not supported for automatic PATH setup."
+        else
+          echo "Your shell could not be identified, so PATH was not changed."
+        fi
+        echo "For a POSIX-compatible shell, add this to its configuration manually:"
+        print_path_command
+      fi
     else
       reply="n"
       interactive_terminal=0
-      if [ -t 1 ] && printf '\nAdd %s to PATH in %s? [Y/n] ' "$bin_dir" "$profile" >/dev/tty && read -r reply </dev/tty; then
+      if [ "$path_mode" = "yes" ] || { [ "$path_mode" = "auto" ] && [ "$yes" = "1" ]; }; then
+        reply="Y"
+      elif [ "$path_mode" = "no" ]; then
+        reply="n"
+      elif [ -t 1 ] && printf '\nAdd %s to PATH in %s? [Y/n] ' "$bin_dir" "$profile" >/dev/tty && read -r reply </dev/tty; then
         reply="${reply:-Y}"
         interactive_terminal=1
       fi
@@ -234,14 +271,15 @@ case ":$PATH:" in
         echo "Added to $profile. Restart your shell to pick it up."
         ;;
         *)
-        if [ "$interactive_terminal" = "1" ]; then
+        if [ "$path_mode" = "no" ]; then
+          echo "Skipped PATH setup (--no-add-to-path)."
+        elif [ "$interactive_terminal" = "1" ]; then
           echo "Skipped. Add this to your shell config manually:"
         else
           echo "No interactive terminal was available, so PATH was not changed."
           echo "Add this to your shell config manually:"
         fi
-        quoted_bin_dir="$(printf '%s' "$bin_dir" | sed "s/'/'\\\\''/g")"
-        printf '  export PATH='"'%s'"':"$PATH"\n' "$quoted_bin_dir"
+        print_path_command
         ;;
       esac
     fi

@@ -28,4 +28,5 @@ if ($installer -and (Test-Path -LiteralPath $installer -PathType Leaf)) {
 }
 
 $remoteInstaller = Invoke-RestMethod -Uri "https://git.xeondev.com/nyan/zvm/raw/branch/main/install.windows.ps1"
-Invoke-Expression $remoteInstaller
+$installerScript = [ScriptBlock]::Create($remoteInstaller)
+& $installerScript @args

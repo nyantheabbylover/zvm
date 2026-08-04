@@ -71,13 +71,13 @@ really need to bypass verification.
 
 ## Install
 
+Linux:
 ```sh
-# Linux
 curl -fsSL https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | sh
 ```
 
+Windows:
 ```powershell
-# Windows
 irm https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | iex
 ```
 
@@ -85,19 +85,24 @@ Both commands use the same cross-platform installer. It installs `zig` and
 `zvm` into zvm's `bin` directory and offers to add that directory to your
 PATH.
 
+For unattended installs, use `-y` / `--yes` to accept the normal defaults,
+or choose PATH setup explicitly with `--add-to-path` or `--no-add-to-path`.
+On Windows, the equivalent PowerShell parameters are `-Yes` (or `-y`),
+`-AddToPath`, and `-NoAddToPath`.
+
 If zvm is already on your PATH and matches the latest release, the installer
 does nothing. To reinstall it anyway, use `./install.ps1 --force` on Linux or
 `.\install.ps1 -Force` on Windows from a local checkout.
 
 If you would rather build from a checkout:
 
+Linux:
 ```sh
-# Linux
 ./install.ps1 --build
 ```
 
+Windows:
 ```powershell
-# Windows
 .\install.ps1 -Build
 ```
 

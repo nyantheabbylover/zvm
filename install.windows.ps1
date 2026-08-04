@@ -7,10 +7,18 @@
 # passed through the piped irm | iex form.
 param(
     [switch]$Build,
-    [switch]$Force
+    [switch]$Force,
+    [Alias("y")]
+    [switch]$Yes,
+    [switch]$AddToPath,
+    [switch]$NoAddToPath
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($AddToPath -and $NoAddToPath) {
+    throw "-AddToPath and -NoAddToPath cannot be used together."
+}
 
 $ReleaseBase = if ($env:ZVM_RELEASE_BASE) {
     $env:ZVM_RELEASE_BASE
@@ -34,6 +42,14 @@ function Get-InstalledZvmVersion {
     }
 
     return $version.Trim()
+}
+
+function Write-PathSetupCommand {
+    param([string]$BinDir)
+
+    $escapedBinDir = $BinDir.Replace("'", "''")
+    Write-Host "Run this PowerShell command to add zvm to your user PATH:"
+    Write-Host "  `$zvmBin = '$escapedBinDir'; `$userPath = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', `"`$zvmBin;`$userPath`", 'User')"
 }
 
 function Get-ProcessesUsingFile {
@@ -77,7 +93,7 @@ function Copy-InstalledBinary {
     }
 
     $kill = $false
-    if ([Environment]::UserInteractive) {
+    if (-not $Yes -and [Environment]::UserInteractive) {
         $answer = Read-Host "Terminate these process(es) and retry? [y/N]"
         $kill = $answer -match '^[Yy]'
     }
@@ -230,7 +246,11 @@ if ($pathEntries -contains $binDir) {
     Write-Host "$binDir is already on your PATH."
 } else {
     $answer = $null
-    if ([Environment]::UserInteractive) {
+    if ($AddToPath -or ($Yes -and -not $NoAddToPath)) {
+        $answer = "y"
+    } elseif ($NoAddToPath) {
+        $answer = "n"
+    } elseif ([Environment]::UserInteractive) {
         try {
             $answer = Read-Host "Add $binDir to your user PATH? [y/n]"
         } catch {
@@ -239,16 +259,19 @@ if ($pathEntries -contains $binDir) {
     }
 
     if ($null -eq $answer) {
-        Write-Host "Run this PowerShell command to add zvm to your user PATH:"
-        Write-Host "  `$zvmBin = Join-Path `$env:LOCALAPPDATA 'zvm\bin'; `$userPath = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', `"`$zvmBin;`$userPath`", 'User')"
+        Write-PathSetupCommand $binDir
     } elseif ([string]::IsNullOrWhiteSpace($answer) -or $answer -match '^[Yy]') {
         $newPath = if ($userPath) { "$binDir;$userPath" } else { $binDir }
         [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
         $pathConfigured = $true
         Write-Host "Added. Open a new terminal to pick it up."
     } else {
-        Write-Host "Skipped. Run this PowerShell command to add zvm to your user PATH:"
-        Write-Host "  `$zvmBin = Join-Path `$env:LOCALAPPDATA 'zvm\bin'; `$userPath = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', `"`$zvmBin;`$userPath`", 'User')"
+        if ($NoAddToPath) {
+            Write-Host "Skipped PATH setup (-NoAddToPath)."
+        } else {
+            Write-Host "Skipped."
+        }
+        Write-PathSetupCommand $binDir
     }
 }
 
