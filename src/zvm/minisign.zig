@@ -1,3 +1,9 @@
+const std = @import("std");
+const Ed25519 = std.crypto.sign.Ed25519;
+const Io = std.Io;
+
+//
+
 const zig_public_key = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U";
 
 const ParsedSignature = struct {
@@ -28,6 +34,8 @@ pub fn verifyFile(io: Io, path: []const u8, signature_text: []const u8) !void {
 }
 
 fn parseSignature(text: []const u8) !ParsedSignature {
+    const trusted_comment_prefix = "trusted comment: ";
+    
     var lines = std.mem.splitScalar(u8, text, '\n');
     const untrusted = trimCr(lines.next() orelse
         return error.InvalidMinisignSignature);
@@ -38,7 +46,7 @@ fn parseSignature(text: []const u8) !ParsedSignature {
         return error.InvalidMinisignSignature);
     const trusted_line = trimCr(lines.next() orelse
         return error.InvalidMinisignSignature);
-    if (!std.mem.startsWith(u8, trusted_line, "trusted comment: "))
+    if (!std.mem.startsWith(u8, trusted_line, trusted_comment_prefix))
         return error.InvalidMinisignSignature;
 
     const encoded_global = trimCr(lines.next() orelse return error.InvalidMinisignSignature);
@@ -58,7 +66,7 @@ fn parseSignature(text: []const u8) !ParsedSignature {
 
     return .{
         .signature = Ed25519.Signature.fromBytes(signed[10..74].*),
-        .trusted_comment = trusted_line,
+        .trusted_comment = trusted_line[trusted_comment_prefix.len..],
         .global_signature = Ed25519.Signature.fromBytes(global),
     };
 }
@@ -92,14 +100,14 @@ fn zigPublicKeyBytes() ![42]u8 {
 }
 
 fn decodeFixed(comptime N: usize, encoded: []const u8) ![N]u8 {
-    const decoded_len = std.base64.standard_no_pad.Decoder.calcSizeForSlice(encoded) catch
+    const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(encoded) catch
         return error.InvalidMinisignSignature;
     if (decoded_len != N) {
         return error.InvalidMinisignSignature;
     }
 
     var decoded: [N]u8 = undefined;
-    std.base64.standard_no_pad.Decoder.decode(&decoded, encoded) catch
+    std.base64.standard.Decoder.decode(&decoded, encoded) catch
         return error.InvalidMinisignSignature;
 
     return decoded;
@@ -109,9 +117,22 @@ fn trimCr(line: []const u8) []const u8 {
     return std.mem.trimEnd(u8, line, "\r");
 }
 
-//
+test "parse padded Minisign signature" {
+    const signature =
+        "untrusted comment: signature from minisign secret key\n" ++
+        "RUSGOq2NVecA2RvK7di8o+6kjPUxmGqO8a9ejbbiN7K/8YeT0lKSdmDVOv2wjd+A0XwQzLKPcdWo66SWTDXJQPEeUUQqQbIWqwo=\n" ++
+        "trusted comment: timestamp:1785685616\tfile:zig-x86_64-linux-0.17.0-dev.1525+91c6d8a09.tar.xz\thashed\n" ++
+        "wEAYx4KI6j0napCIbeb4i/2QDBs2Ebfs45X9jYGRd8JwrSBp8Q8sWvpgTw83lsieJ9QUf5IxCJw9Gk16mn41CQ==\n";
 
-const Ed25519 = std.crypto.sign.Ed25519;
-const Io = std.Io;
+    const parsed = try parseSignature(signature);
+    try std.testing.expectEqualStrings(
+        "timestamp:1785685616\tfile:zig-x86_64-linux-0.17.0-dev.1525+91c6d8a09.tar.xz\thashed",
+        parsed.trusted_comment,
+    );
 
-const std = @import("std");
+    const signature_bytes = parsed.signature.toBytes();
+    var verifier = try parsed.global_signature.verifier(try zigPublicKey());
+    verifier.update(&signature_bytes);
+    verifier.update(parsed.trusted_comment);
+    try verifier.verify();
+}
