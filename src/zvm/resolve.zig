@@ -206,23 +206,38 @@ fn ensureInstalledInner(
 
     const final_dir = try ctx.paths.versionDir(ctx.gpa, resolved.version);
     var version_lock: ?lock.Held = null;
+    var install_lock: ?lock.Held = null;
     var holding_exclusive_lock = false;
     errdefer if (version_lock) |*held| held.release(ctx.io);
+    defer if (install_lock) |*held| held.release(ctx.io);
 
-    // A running compiler holds a shared lock. Take one before checking for an
-    // existing installation so `remove` cannot race that check. If the
-    // version is absent, release it before taking the exclusive install lock.
-    if (retain_lock) {
+    // Check for an existing installation while holding a shared lock. 
+    // If another process is installing this version, this waits for it and then
+    // rechecks before requesting an exclusive install lock.
+    version_lock = try lock.acquireShared(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+    if (!isInstalled(ctx, final_dir)) {
+        version_lock.?.release(ctx.io);
+        version_lock = null;
+    }
+
+    if (version_lock == null) {
+        // Only one process may change this version from absent to
+        // installed. Once selected, recheck under the version lock because
+        // another installer may have completed while we were waiting.
+        const install_lock_name = try std.fmt.allocPrint(
+            ctx.gpa,
+            "{s}.install",
+            .{resolved.version},
+        );
+        install_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, install_lock_name);
         version_lock = try lock.acquireShared(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+
         if (!isInstalled(ctx, final_dir)) {
             version_lock.?.release(ctx.io);
             version_lock = null;
+            version_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
+            holding_exclusive_lock = true;
         }
-    }
-
-    if (version_lock == null and !isInstalled(ctx, final_dir)) {
-        version_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
-        holding_exclusive_lock = true;
     }
 
     // Another zvm instance may have installed this version while this one was

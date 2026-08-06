@@ -66,7 +66,7 @@ fn acquireWithMode(
         return null;
     }
 
-    debug.log("waiting for lock: {s}", .{name});
+    debug.log("another process holds the '{s}' lock; waiting for it to finish", .{name});
     try file.lock(io, mode);
 
     return .{ .file = file };
