@@ -2,7 +2,9 @@
 echo `# <#`
 
 zvm_installer_sourced=0
-if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
+if [ -n "${BASH_VERSION:-}" ] &&
+  [ -n "${BASH_SOURCE:-}" ] &&
+  [ "${BASH_SOURCE[0]}" != "$0" ]; then
   zvm_installer_sourced=1
 fi
 
