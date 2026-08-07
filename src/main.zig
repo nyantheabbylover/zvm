@@ -112,7 +112,7 @@ pub fn main(init: std.process.Init) !void {
 
     const install_result = use_result.install;
 
-    if (!install_result.verified) {
+    if (!install_result.already_installed and !install_result.verified) {
         try zvm.color.print(
             errw,
             .yellow,

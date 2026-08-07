@@ -195,7 +195,7 @@ fn cmdInstall(
             "warning: installed zig {s} without verification (--no-verify)\n",
             .{result.version},
         );
-    } else if (!result.verified) {
+    } else if (!result.already_installed and !result.verified) {
         try zvm.color.print(
             out,
             .yellow,
