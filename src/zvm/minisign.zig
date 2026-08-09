@@ -35,7 +35,7 @@ pub fn verifyFile(io: Io, path: []const u8, signature_text: []const u8) !void {
 
 fn parseSignature(text: []const u8) !ParsedSignature {
     const trusted_comment_prefix = "trusted comment: ";
-    
+
     var lines = std.mem.splitScalar(u8, text, '\n');
     const untrusted = trimCr(lines.next() orelse
         return error.InvalidMinisignSignature);
@@ -115,6 +115,78 @@ fn decodeFixed(comptime N: usize, encoded: []const u8) ![N]u8 {
 
 fn trimCr(line: []const u8) []const u8 {
     return std.mem.trimEnd(u8, line, "\r");
+}
+
+//
+
+test "pinned Zig Minisign public key is valid" {
+    _ = try zigPublicKey();
+}
+
+test "parseSignature rejects malformed signatures" {
+    try std.testing.expectError(
+        error.InvalidMinisignSignature,
+        parseSignature("definitely not a signature"),
+    );
+}
+
+test "parseSignature accepts padded CRLF Minisign structure" {
+    const key = try zigPublicKeyBytes();
+    var signature_bytes: [74]u8 = @splat(0);
+    @memcpy(signature_bytes[0..2], "ED");
+    @memcpy(signature_bytes[2..10], key[2..10]);
+    const global_bytes: [64]u8 = @splat(0);
+
+    var signature_encoded: [std.base64.standard.Encoder.calcSize(signature_bytes.len)]u8 = undefined;
+    _ = std.base64.standard.Encoder.encode(&signature_encoded, &signature_bytes);
+    var global_encoded: [std.base64.standard.Encoder.calcSize(global_bytes.len)]u8 = undefined;
+    _ = std.base64.standard.Encoder.encode(&global_encoded, &global_bytes);
+
+    const text = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "untrusted comment: test\r\n{s}\r\ntrusted comment: timestamp:0\r\n{s}\r\n",
+        .{ &signature_encoded, &global_encoded },
+    );
+    defer std.testing.allocator.free(text);
+
+    const parsed = try parseSignature(text);
+    try std.testing.expectEqualStrings("timestamp:0", parsed.trusted_comment);
+}
+
+test "verifyDigest validates both Minisign signatures" {
+    const key_pair = try Ed25519.KeyPair.generateDeterministic([_]u8{1} ** Ed25519.KeyPair.seed_length);
+    const digest = "archive digest";
+    const trusted_comment = "timestamp:0";
+    const archive_signature = try key_pair.sign(digest, null);
+    const archive_signature_bytes = archive_signature.toBytes();
+
+    var global_message: [archive_signature_bytes.len + trusted_comment.len]u8 = undefined;
+    @memcpy(global_message[0..archive_signature_bytes.len], &archive_signature_bytes);
+    @memcpy(global_message[archive_signature_bytes.len..], trusted_comment);
+    const global_signature = try key_pair.sign(&global_message, null);
+
+    const parsed = ParsedSignature{
+        .signature = archive_signature,
+        .trusted_comment = trusted_comment,
+        .global_signature = global_signature,
+    };
+    try verifyDigest(parsed, digest, key_pair.public_key);
+    try std.testing.expectError(
+        error.InvalidArchiveSignature,
+        verifyDigest(parsed, "different archive digest", key_pair.public_key),
+    );
+
+    var invalid_global_signature_bytes = global_signature.toBytes();
+    invalid_global_signature_bytes[0] ^= 1;
+    const invalid_global = ParsedSignature{
+        .signature = archive_signature,
+        .trusted_comment = trusted_comment,
+        .global_signature = Ed25519.Signature.fromBytes(invalid_global_signature_bytes),
+    };
+    try std.testing.expectError(
+        error.InvalidGlobalSignature,
+        verifyDigest(invalid_global, digest, key_pair.public_key),
+    );
 }
 
 test "parse padded Minisign signature" {

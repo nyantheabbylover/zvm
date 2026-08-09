@@ -1,3 +1,26 @@
+const std = @import("std");
+const Io = std.Io;
+
+const config = @import("config.zig");
+const debug = @import("debug.zig");
+const extract = @import("extract.zig");
+const index = @import("index.zig");
+const lock = @import("lock.zig");
+const minisign = @import("minisign.zig");
+const net = @import("net.zig");
+const retry = @import("retry.zig");
+
+const Config = config.Config;
+const Paths = @import("paths.zig").Paths;
+
+const download = @import("download.zig").download;
+const fetchMirrors = @import("mirrors.zig").fetchMirrors;
+const findMinimumZigVersion = @import("zon_scan.zig").findMinimumZigVersion;
+const mirrorUrl = @import("mirrors.zig").mirrorUrl;
+const validateVersion = @import("version.zig").validate;
+
+//
+
 pub const Context = struct {
     gpa: std.mem.Allocator,
     io: Io,
@@ -36,21 +59,43 @@ pub const UseResult = struct {
 /// (walking up from cwd) > configured default > most recently used
 /// installed version > error.
 pub fn resolveVersion(ctx: *Context, override: ?[]const u8) !Resolution {
-    if (override) |o| {
-        try validateVersion(o);
+    var project: ?ProjectVersion = null;
+    var cfg = Config{};
+    if (override == null) {
+        project = try findProjectVersion(ctx);
+        cfg = config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch Config{};
+    }
 
-        debug.log("version source: override ({s})", .{o});
+    const resolution = try resolutionFromSources(override, project, cfg);
+    switch (resolution.source) {
+        .override => debug.log("version source: override ({s})", .{resolution.version}),
+        .project => debug.log(
+            "version source: project {s} ({s})",
+            .{ resolution.version, resolution.project_file.? },
+        ),
+        .default => debug.log("version source: configured default ({s})", .{resolution.version}),
+        .recent => debug.log("version source: most recently used ({s})", .{resolution.version}),
+    }
+
+    return resolution;
+}
+
+fn resolutionFromSources(
+    override: ?[]const u8,
+    project: ?ProjectVersion,
+    cfg: Config,
+) !Resolution {
+    if (override) |version| {
+        try validateVersion(version);
 
         return .{
-            .version = o,
+            .version = version,
             .source = .override,
         };
     }
 
-    if (try findProjectVersion(ctx)) |found| {
+    if (project) |found| {
         try validateVersion(found.version);
-
-        debug.log("version source: project {s} ({s})", .{ found.version, found.path });
 
         return .{
             .version = found.version,
@@ -59,24 +104,19 @@ pub fn resolveVersion(ctx: *Context, override: ?[]const u8) !Resolution {
         };
     }
 
-    const cfg = config.load(ctx.gpa, ctx.io, ctx.paths.config_file) catch Config{};
-    if (cfg.default_version) |d| {
-        try validateVersion(d);
-
-        debug.log("version source: configured default ({s})", .{d});
+    if (cfg.default_version) |version| {
+        try validateVersion(version);
 
         return .{
-            .version = d,
+            .version = version,
             .source = .default,
         };
     }
-    if (cfg.last_used_version) |r| {
-        try validateVersion(r);
-
-        debug.log("version source: most recently used ({s})", .{r});
+    if (cfg.last_used_version) |version| {
+        try validateVersion(version);
 
         return .{
-            .version = r,
+            .version = version,
             .source = .recent,
         };
     }
@@ -94,23 +134,35 @@ const ProjectVersion = struct {
 };
 
 fn findProjectVersion(ctx: *Context) !?ProjectVersion {
-    var dir = try Io.Dir.cwd().openDir(ctx.io, ".", .{});
-    defer dir.close(ctx.io);
+    return findProjectVersionFrom(
+        ctx.gpa,
+        ctx.io,
+        try Io.Dir.cwd().openDir(ctx.io, ".", .{}),
+    );
+}
+
+fn findProjectVersionFrom(
+    gpa: std.mem.Allocator,
+    io: Io,
+    initial_dir: Io.Dir,
+) !?ProjectVersion {
+    var dir = initial_dir;
+    defer dir.close(io);
 
     var depth: usize = 0;
     while (depth < 128) : (depth += 1) {
         const text = dir.readFileAllocOptions(
-            ctx.io,
+            io,
             "build.zig.zon",
-            ctx.gpa,
+            gpa,
             .limited(1 << 20),
             .of(u8),
             0,
         ) catch |err| switch (err) {
             error.FileNotFound => {
-                const parent = dir.openDir(ctx.io, "..", .{}) catch
+                const parent = dir.openDir(io, "..", .{}) catch
                     return null;
-                dir.close(ctx.io);
+                dir.close(io);
                 dir = parent;
 
                 continue;
@@ -119,7 +171,7 @@ fn findProjectVersion(ctx: *Context) !?ProjectVersion {
         };
 
         if (findMinimumZigVersion(text)) |v| {
-            const path = displayPath(ctx, dir);
+            const path = displayPath(gpa, io, dir);
 
             return .{
                 .version = v,
@@ -133,12 +185,12 @@ fn findProjectVersion(ctx: *Context) !?ProjectVersion {
     return null;
 }
 
-fn displayPath(ctx: *Context, dir: Io.Dir) []const u8 {
+fn displayPath(gpa: std.mem.Allocator, io: Io, dir: Io.Dir) []const u8 {
     var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const n = dir.realPath(ctx.io, &buf) catch
+    const n = dir.realPath(io, &buf) catch
         return "build.zig.zon";
 
-    return std.fs.path.join(ctx.gpa, &.{ buf[0..n], "build.zig.zon" }) catch "build.zig.zon";
+    return std.fs.path.join(gpa, &.{ buf[0..n], "build.zig.zon" }) catch "build.zig.zon";
 }
 
 pub fn ensureInstalled(
@@ -211,7 +263,7 @@ fn ensureInstalledInner(
     errdefer if (version_lock) |*held| held.release(ctx.io);
     defer if (install_lock) |*held| held.release(ctx.io);
 
-    // Check for an existing installation while holding a shared lock. 
+    // Check for an existing installation while holding a shared lock.
     // If another process is installing this version, this waits for it and then
     // rechecks before requesting an exclusive install lock.
     version_lock = try lock.acquireShared(ctx.gpa, ctx.io, ctx.paths.locks, resolved.version);
@@ -371,14 +423,16 @@ pub fn installErrorHint(err: anyerror) ?[]const u8 {
 }
 
 pub fn isInstalled(ctx: *Context, final_dir: []const u8) bool {
-    Io.Dir.cwd().access(ctx.io, final_dir, .{}) catch return false;
+    Io.Dir.cwd().access(ctx.io, final_dir, .{}) catch
+        return false;
 
     return true;
 }
 
 fn confirmUnverified(ctx: *Context, version: []const u8) bool {
     const stdin = Io.File.stdin();
-    if (!(stdin.isTty(ctx.io) catch return false)) return false;
+    if (!(stdin.isTty(ctx.io) catch return false))
+        return false;
 
     var stderr_buf: [1024]u8 = undefined;
     var stderr = Io.File.Writer.init(.stderr(), ctx.io, &stderr_buf);
@@ -389,7 +443,8 @@ fn confirmUnverified(ctx: *Context, version: []const u8) bool {
         return false;
     stderr.interface.print("Install it anyway? [y/n] ", .{}) catch
         return false;
-    stderr.interface.flush() catch return false;
+    stderr.interface.flush() catch
+        return false;
 
     var stdin_buf: [64]u8 = undefined;
     var reader = stdin.reader(ctx.io, &stdin_buf);
@@ -417,24 +472,75 @@ fn urlBasename(url: []const u8) []const u8 {
 
 //
 
-const Config = config.Config;
-const Paths = @import("paths.zig").Paths;
+test "interactive confirmation accepts only y or yes" {
+    const accepted = [_][]const u8{ "y", "Y", "yes", "YES", "  Yes\r\n" };
+    for (accepted) |answer|
+        try std.testing.expect(isAffirmative(answer));
 
-const download = @import("download.zig").download;
-const fetchMirrors = @import("mirrors.zig").fetchMirrors;
-const findMinimumZigVersion = @import("zon_scan.zig").findMinimumZigVersion;
-const mirrorUrl = @import("mirrors.zig").mirrorUrl;
-const validateVersion = @import("version.zig").validate;
+    const rejected = [_][]const u8{ "", "n", "no", "yeah", "yeee" };
+    for (rejected) |answer|
+        try std.testing.expect(!isAffirmative(answer));
+}
 
-const Io = std.Io;
+test "urlBasename removes query parameters from download URLs" {
+    try std.testing.expectEqualStrings(
+        "zig-x86_64-windows-0.16.0.zip",
+        urlBasename("https://mirror.invalid/zig-x86_64-windows-0.16.0.zip?source=zvm"),
+    );
+    try std.testing.expectEqualStrings("archive.tar.xz", urlBasename("archive.tar.xz"));
+}
 
-const config = @import("config.zig");
-const debug = @import("debug.zig");
-const extract = @import("extract.zig");
-const index = @import("index.zig");
-const lock = @import("lock.zig");
-const minisign = @import("minisign.zig");
-const net = @import("net.zig");
-const retry = @import("retry.zig");
+test "resolutionFromSources follows the documented precedence" {
+    const project = ProjectVersion{
+        .version = "0.16.0",
+        .path = "project/build.zig.zon",
+    };
+    const cfg = Config{
+        .default_version = "0.15.2",
+        .last_used_version = "0.14.1",
+    };
 
-const std = @import("std");
+    const override = try resolutionFromSources("0.17.0", project, cfg);
+    try std.testing.expectEqual(.override, override.source);
+    try std.testing.expectEqualStrings("0.17.0", override.version);
+
+    const from_project = try resolutionFromSources(null, project, cfg);
+    try std.testing.expectEqual(.project, from_project.source);
+    try std.testing.expectEqualStrings("0.16.0", from_project.version);
+    try std.testing.expectEqualStrings("project/build.zig.zon", from_project.project_file.?);
+
+    const from_default = try resolutionFromSources(null, null, cfg);
+    try std.testing.expectEqual(.default, from_default.source);
+    try std.testing.expectEqualStrings("0.15.2", from_default.version);
+
+    const from_recent = try resolutionFromSources(null, null, .{ .last_used_version = "0.14.1" });
+    try std.testing.expectEqual(.recent, from_recent.source);
+    try std.testing.expectEqualStrings("0.14.1", from_recent.version);
+
+    try std.testing.expectError(error.NoVersionFound, resolutionFromSources(null, null, .{}));
+}
+
+test "findProjectVersionFrom searches parent directories" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    try tmp.dir.createDirPath(io, "project/src/deep");
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "project/build.zig.zon",
+        .data = ".{ .minimum_zig_version = \"0.16.0\" }",
+    });
+    const nested_dir = try tmp.dir.openDir(io, "project/src/deep", .{});
+    const found = (try findProjectVersionFrom(allocator, io, nested_dir)) orelse
+        return error.TestExpectedEqual;
+
+    try std.testing.expectEqualStrings("0.16.0", found.version);
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buf);
+    const expected = try std.fs.path.join(allocator, &.{ path_buf[0..path_len], "project", "build.zig.zon" });
+    try std.testing.expectEqualStrings(expected, found.path);
+}

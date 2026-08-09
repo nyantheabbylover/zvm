@@ -1,3 +1,13 @@
+const std = @import("std");
+const Io = std.Io;
+
+const atomic_write = @import("atomic_write.zig");
+const lock = @import("lock.zig");
+
+const Paths = @import("paths.zig").Paths;
+
+//
+
 pub const Config = struct {
     default_version: ?[]const u8 = null,
     last_used_version: ?[]const u8 = null,
@@ -68,11 +78,67 @@ fn save(gpa: std.mem.Allocator, io: Io, path: []const u8, cfg: Config) !void {
 
 //
 
-const Paths = @import("paths.zig").Paths;
+test "load treats missing or malformed configuration as empty" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
 
-const Io = std.Io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const io = std.testing.io;
 
-const atomic_write = @import("atomic_write.zig");
-const lock = @import("lock.zig");
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buf);
+    const config_path = try std.fs.path.join(allocator, &.{ path_buf[0..path_len], "config.json" });
 
-const std = @import("std");
+    const missing = try load(allocator, io, config_path);
+    try std.testing.expect(missing.default_version == null);
+    try std.testing.expect(missing.last_used_version == null);
+
+    try tmp.dir.writeFile(io, .{ .sub_path = "config.json", .data = "whatever" });
+    const malformed = try load(allocator, io, config_path);
+    try std.testing.expect(malformed.default_version == null);
+    try std.testing.expect(malformed.last_used_version == null);
+}
+
+test "configuration updates preserve the other version setting" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const io = std.testing.io;
+
+    try tmp.dir.createDirPath(io, "locks");
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buf);
+    const base = path_buf[0..path_len];
+    const lock_path = try std.fs.path.join(allocator, &.{ base, "locks" });
+    const config_path = try std.fs.path.join(allocator, &.{ base, "config.json" });
+    const test_paths: Paths = .{
+        .base = base,
+        .versions = "",
+        .cache = "",
+        .tmp = "",
+        .locks = lock_path,
+        .bin = "",
+        .config_file = config_path,
+        .index_file = "",
+        .index_meta_file = "",
+        .mirrors_file = "",
+        .mirrors_meta_file = "",
+    };
+
+    try setDefault(allocator, io, test_paths, "0.16.0");
+    try recordUse(allocator, io, test_paths, "0.15.2");
+
+    const configured = try load(allocator, io, config_path);
+    try std.testing.expectEqualStrings("0.16.0", configured.default_version.?);
+    try std.testing.expectEqualStrings("0.15.2", configured.last_used_version.?);
+
+    try setDefault(allocator, io, test_paths, null);
+    const cleared = try load(allocator, io, config_path);
+    try std.testing.expect(cleared.default_version == null);
+    try std.testing.expectEqualStrings("0.15.2", cleared.last_used_version.?);
+}

@@ -1,3 +1,17 @@
+const std = @import("std");
+const Io = std.Io;
+
+const cached_fetch = @import("cached_fetch.zig");
+const debug = @import("debug.zig");
+const target = @import("target.zig");
+
+const Paths = @import("paths.zig").Paths;
+
+const compareStableVersion = @import("version.zig").compareStable;
+const validateVersion = @import("version.zig").validate;
+
+//
+
 const index_url = "https://ziglang.org/download/index.json";
 const ttl_seconds: i64 = 60 * 60;
 
@@ -130,14 +144,112 @@ fn createUnlisted(gpa: std.mem.Allocator, version: []const u8) !Resolved {
 
 //
 
-const Paths = @import("paths.zig").Paths;
-const validateVersion = @import("version.zig").validate;
-const compareStableVersion = @import("version.zig").compareStable;
+test "latestStableKey ignores master and selects the newest stable release" {
+    const fixture =
+        \\{
+        \\  "master": {},
+        \\  "0.15.2": {},
+        \\  "0.16.0": {}
+        \\}
+    ;
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        fixture,
+        .{},
+    );
+    defer parsed.deinit();
 
-const Io = std.Io;
+    const key = latestStableKey(parsed.value.object) orelse
+        return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("0.16.0", key);
+}
 
-const cached_fetch = @import("cached_fetch.zig");
-const target = @import("target.zig");
-const debug = @import("debug.zig");
+test "latestStableKey returns null when the index only contains master" {
+    const fixture =
+        \\{
+        \\  "master": {}
+        \\}
+    ;
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        fixture,
+        .{},
+    );
+    defer parsed.deinit();
 
-const std = @import("std");
+    try std.testing.expect(latestStableKey(parsed.value.object) == null);
+}
+
+test "pickFromIndex selects the native artifact and its verification metadata" {
+    const fixture = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{
+        \\  "0.16.0": {{
+        \\    "version": "0.16.0",
+        \\    "{s}": {{
+        \\      "tarball": "https://whatever.invalid/zig.tar.xz",
+        \\      "shasum": "abc123",
+        \\      "size": 1234
+        \\    }}
+        \\  }}
+        \\}}
+    , .{target.nativeTargetString()});
+    defer std.testing.allocator.free(fixture);
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        fixture,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const resolved = (try pickFromIndex(parsed.value.object, "0.16.0")) orelse
+        return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("0.16.0", resolved.version);
+    try std.testing.expectEqualStrings("https://whatever.invalid/zig.tar.xz", resolved.tarball_url);
+    try std.testing.expectEqualStrings("abc123", resolved.shasum.?);
+    try std.testing.expectEqual(@as(?u64, 1234), resolved.size);
+}
+
+test "pickFromIndex resolves master to its concrete development version" {
+    const fixture = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{
+        \\  "master": {{
+        \\    "version": "0.17.0-dev.1609+11e2bb391",
+        \\    "{s}": {{
+        \\      "tarball": "https://whatever.invalid/zig.tar.xz",
+        \\      "shasum": "abc123"
+        \\    }}
+        \\  }}
+        \\}}
+    , .{target.nativeTargetString()});
+    defer std.testing.allocator.free(fixture);
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        fixture,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const resolved = (try pickFromIndex(parsed.value.object, "master")) orelse
+        return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("0.17.0-dev.1609+11e2bb391", resolved.version);
+    try std.testing.expectEqualStrings("abc123", resolved.shasum.?);
+}
+
+test "createUnlisted builds the expected direct download URL" {
+    const resolved = try createUnlisted(
+        std.testing.allocator,
+        "0.17.0-dev.1609+11e2bb391",
+    );
+    defer std.testing.allocator.free(resolved.tarball_url);
+
+    try std.testing.expectEqualStrings("0.17.0-dev.1609+11e2bb391", resolved.version);
+    try std.testing.expect(resolved.shasum == null);
+    try std.testing.expect(resolved.size == null);
+    try std.testing.expect(std.mem.endsWith(u8, resolved.tarball_url, target.archiveExt()));
+}

@@ -1,5 +1,9 @@
 //! Shared library for the `zig` shim and `zvm` CLI.
 
+const std = @import("std");
+
+//
+
 pub const app_version = @import("build_options").app_version;
 
 pub const cached_fetch = @import("zvm/cached_fetch.zig");
@@ -20,3 +24,9 @@ pub const retry = @import("zvm/retry.zig");
 pub const target = @import("zvm/target.zig");
 pub const version = @import("zvm/version.zig");
 pub const zon_scan = @import("zvm/zon_scan.zig");
+
+//
+
+test {
+    std.testing.refAllDecls(@This());
+}

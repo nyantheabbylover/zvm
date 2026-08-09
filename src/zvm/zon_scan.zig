@@ -1,3 +1,7 @@
+const std = @import("std");
+
+//
+
 pub fn findMinimumZigVersion(source: [:0]const u8) ?[]const u8 {
     var tokenizer: std.zig.Tokenizer = .init(source);
 
@@ -41,4 +45,37 @@ pub fn findMinimumZigVersion(source: [:0]const u8) ?[]const u8 {
 
 //
 
-const std = @import("std");
+test "findMinimumZigVersion finds the declared version" {
+    const source: [:0]const u8 =
+        \\.{
+        \\    .name = "example",
+        \\    .minimum_zig_version = "0.16.0",
+        \\};
+    ;
+
+    const version = findMinimumZigVersion(source) orelse
+        return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("0.16.0", version);
+}
+
+test "findMinimumZigVersion ignores comments and string contents" {
+    const source: [:0]const u8 =
+        \\// .minimum_zig_version = "0.15.0"
+        \\ .description = ".minimum_zig_version = \\"0.15.0\\"",
+        \\ .minimum_zig_version = "0.16.0",
+    ;
+
+    const version = findMinimumZigVersion(source) orelse
+        return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("0.16.0", version);
+}
+
+test "findMinimumZigVersion returns null when absent" {
+    const source: [:0]const u8 =
+        \\.{
+        \\    .name = "example",
+        \\};
+    ;
+
+    try std.testing.expect(findMinimumZigVersion(source) == null);
+}

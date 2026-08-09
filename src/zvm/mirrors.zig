@@ -1,3 +1,13 @@
+const std = @import("std");
+const Io = std.Io;
+
+const debug = @import("debug.zig");
+const cached_fetch = @import("cached_fetch.zig");
+
+const Paths = @import("paths.zig").Paths;
+
+//
+
 const mirrors_url = "https://ziglang.org/download/community-mirrors.txt";
 const ttl_seconds: i64 = 24 * 60 * 60;
 
@@ -7,7 +17,7 @@ const ttl_seconds: i64 = 24 * 60 * 60;
 pub fn fetchMirrors(
     gpa: std.mem.Allocator,
     io: Io,
-    paths: paths_mod.Paths,
+    paths: Paths,
 ) [][]const u8 {
     const body = cached_fetch.fetch(
         gpa,
@@ -65,10 +75,16 @@ pub fn mirrorUrl(
 
 //
 
-const Io = std.Io;
+test "mirrorUrl records zvm as the download source" {
+    const url = try mirrorUrl(
+        std.testing.allocator,
+        "https://mirror.whatever/zig",
+        "zig-x86_64-linux-0.16.0.tar.xz",
+    );
+    defer std.testing.allocator.free(url);
 
-const cached_fetch = @import("cached_fetch.zig");
-const paths_mod = @import("paths.zig");
-const debug = @import("debug.zig");
-
-const std = @import("std");
+    try std.testing.expectEqualStrings(
+        "https://mirror.whatever/zig/zig-x86_64-linux-0.16.0.tar.xz?source=zvm",
+        url,
+    );
+}

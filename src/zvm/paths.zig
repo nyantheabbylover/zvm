@@ -1,3 +1,12 @@
+const builtin = @import("builtin");
+
+const std = @import("std");
+const Io = std.Io;
+
+const debug = @import("debug.zig");
+
+//
+
 /// The zvm directory layout, rooted at a per-user base directory:
 ///
 ///   versions/<version>/   extracted, installed toolchain
@@ -82,9 +91,47 @@ fn baseDir(gpa: std.mem.Allocator, environ: std.process.Environ.Map) ![]const u8
 
 //
 
-const Io = std.Io;
+test "ZVM_HOME overrides the platform default" {
+    var environ = std.process.Environ.Map.init(std.testing.allocator);
+    defer environ.deinit();
+    try environ.put("ZVM_HOME", "custom-zvm-home");
+    try environ.put("LOCALAPPDATA", "ignored-local-app-data");
+    try environ.put("XDG_DATA_HOME", "ignored-xdg-data-home");
+    try environ.put("HOME", "ignored-home");
 
-const debug = @import("debug.zig");
+    const result = try baseDir(std.testing.allocator, environ);
+    defer std.testing.allocator.free(result);
+    try std.testing.expectEqualStrings("custom-zvm-home", result);
+}
 
-const std = @import("std");
-const builtin = @import("builtin");
+test "baseDir follows the native platform data directory convention" {
+    var environ = std.process.Environ.Map.init(std.testing.allocator);
+    defer environ.deinit();
+
+    if (builtin.target.os.tag == .windows) {
+        try environ.put("LOCALAPPDATA", "local-app-data");
+
+        const result = try baseDir(std.testing.allocator, environ);
+        defer std.testing.allocator.free(result);
+        const expected = try std.fs.path.join(std.testing.allocator, &.{ "local-app-data", "zvm" });
+        defer std.testing.allocator.free(expected);
+        try std.testing.expectEqualStrings(expected, result);
+    } else {
+        try environ.put("XDG_DATA_HOME", "xdg-data-home");
+        try environ.put("HOME", "ignored-home");
+
+        const xdg_result = try baseDir(std.testing.allocator, environ);
+        defer std.testing.allocator.free(xdg_result);
+        const xdg_expected = try std.fs.path.join(std.testing.allocator, &.{ "xdg-data-home", "zvm" });
+        defer std.testing.allocator.free(xdg_expected);
+        try std.testing.expectEqualStrings(xdg_expected, xdg_result);
+
+        _ = environ.swapRemove("XDG_DATA_HOME");
+        try environ.put("HOME", "home");
+        const home_result = try baseDir(std.testing.allocator, environ);
+        defer std.testing.allocator.free(home_result);
+        const home_expected = try std.fs.path.join(std.testing.allocator, &.{ "home", ".local", "share", "zvm" });
+        defer std.testing.allocator.free(home_expected);
+        try std.testing.expectEqualStrings(home_expected, home_result);
+    }
+}

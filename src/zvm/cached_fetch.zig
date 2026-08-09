@@ -1,3 +1,13 @@
+const std = @import("std");
+const Io = std.Io;
+
+const atomic_write = @import("atomic_write.zig");
+const debug = @import("debug.zig");
+const lock = @import("lock.zig");
+const net = @import("net.zig");
+
+//
+
 pub fn fetch(
     gpa: std.mem.Allocator,
     io: Io,
@@ -143,11 +153,67 @@ fn writeFile(io: Io, path: []const u8, data: []const u8) !void {
 
 //
 
-const Io = std.Io;
+test "readFresh returns cached data only while its metadata is fresh" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
 
-const atomic_write = @import("atomic_write.zig");
-const debug = @import("debug.zig");
-const lock = @import("lock.zig");
-const net = @import("net.zig");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const io = std.testing.io;
 
-const std = @import("std");
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buf);
+    const cache_path = try std.fs.path.join(allocator, &.{ path_buf[0..path_len], "index.json" });
+    const meta_path = try std.fs.path.join(allocator, &.{ path_buf[0..path_len], "index.meta" });
+
+    try tmp.dir.writeFile(io, .{ .sub_path = "index.json", .data = "cached index" });
+
+    var timestamp_buf: [32]u8 = undefined;
+    const timestamp = try std.fmt.bufPrint(
+        &timestamp_buf,
+        "{d}",
+        .{Io.Timestamp.now(io, .real).toSeconds()},
+    );
+    try tmp.dir.writeFile(io, .{ .sub_path = "index.meta", .data = timestamp });
+
+    const fresh = (try readFresh(allocator, io, cache_path, meta_path, 60)) orelse
+        return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("cached index", fresh);
+
+    try tmp.dir.writeFile(io, .{ .sub_path = "index.meta", .data = "0" });
+    try std.testing.expect(
+        try readFresh(allocator, io, cache_path, meta_path, 60) == null,
+    );
+}
+
+test "readFresh ignores corrupt metadata and missing cache data" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const io = std.testing.io;
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buf);
+    const cache_path = try std.fs.path.join(allocator, &.{ path_buf[0..path_len], "missing.json" });
+    const meta_path = try std.fs.path.join(allocator, &.{ path_buf[0..path_len], "index.meta" });
+
+    try tmp.dir.writeFile(io, .{ .sub_path = "index.meta", .data = "not a timestamp" });
+    try std.testing.expect(
+        try readFresh(allocator, io, cache_path, meta_path, 60) == null,
+    );
+
+    var timestamp_buf: [32]u8 = undefined;
+    const timestamp = try std.fmt.bufPrint(
+        &timestamp_buf,
+        "{d}",
+        .{Io.Timestamp.now(io, .real).toSeconds()},
+    );
+    try tmp.dir.writeFile(io, .{ .sub_path = "index.meta", .data = timestamp });
+    try std.testing.expect(
+        try readFresh(allocator, io, cache_path, meta_path, 60) == null,
+    );
+}

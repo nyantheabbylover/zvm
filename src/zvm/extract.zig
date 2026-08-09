@@ -1,3 +1,12 @@
+const builtin = @import("builtin");
+
+const std = @import("std");
+const Io = std.Io;
+
+const retry = @import("retry.zig");
+
+//
+
 pub fn installFromArchive(
     gpa: std.mem.Allocator,
     io: Io,
@@ -91,9 +100,37 @@ fn findSingleTopLevelDir(gpa: std.mem.Allocator, io: Io, scratch_dir: []const u8
 
 //
 
-const Io = std.Io;
+test "findSingleTopLevelDir selects one directory and otherwise keeps the scratch directory" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
 
-const retry = @import("retry.zig");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
-const builtin = @import("builtin");
-const std = @import("std");
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buf);
+    const root = path_buf[0..path_len];
+
+    const one_dir = try std.fs.path.join(allocator, &.{ root, "one-dir" });
+    try tmp.dir.createDirPath(io, "one-dir/zig");
+    const found = try findSingleTopLevelDir(allocator, io, one_dir);
+    defer allocator.free(found);
+    const expected = try std.fs.path.join(allocator, &.{ one_dir, "zig" });
+    try std.testing.expectEqualStrings(expected, found);
+
+    const multiple = try std.fs.path.join(allocator, &.{ root, "multiple" });
+    try tmp.dir.createDirPath(io, "multiple/zig");
+    try tmp.dir.writeFile(io, .{ .sub_path = "multiple/README.txt", .data = "test" });
+    const multiple_found = try findSingleTopLevelDir(allocator, io, multiple);
+    defer allocator.free(multiple_found);
+    try std.testing.expectEqualStrings(multiple, multiple_found);
+
+    const file_only = try std.fs.path.join(allocator, &.{ root, "file-only" });
+    try tmp.dir.createDirPath(io, "file-only");
+    try tmp.dir.writeFile(io, .{ .sub_path = "file-only/zig", .data = "not a directory" });
+    const file_found = try findSingleTopLevelDir(allocator, io, file_only);
+    defer allocator.free(file_found);
+    try std.testing.expectEqualStrings(file_only, file_found);
+}
