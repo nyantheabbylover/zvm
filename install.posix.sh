@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs zvm: downloads a prebuilt release by default.
+# Installs zvm on POSIX systems: downloads a prebuilt release by default.
 # Pass --build to build from source instead, that requires running this
 # script from a local checkout of the repo (not the curl | sh one-liner,
 # since there's no source tree to build in that case) and a zig compiler
@@ -39,7 +39,17 @@ done
 RELEASE_BASE="${ZVM_RELEASE_BASE:-https://git.xeondev.com/nyan/zvm/releases/download/latest}"
 RELEASE_API="${ZVM_RELEASE_API:-https://git.xeondev.com/api/v1/repos/nyan/zvm/releases/latest}"
 
-os="linux"
+system_name="$(uname -s)"
+case "$system_name" in
+  Linux) os="linux" ;;
+  Darwin) os="macos" ;;
+  FreeBSD) os="freebsd" ;;
+  *)
+    echo "error: unsupported operating system: $system_name" >&2
+    exit 1
+    ;;
+esac
+
 arch="$(uname -m)"
 case "$arch" in
   x86_64 | amd64) arch="x86_64" ;;
@@ -61,63 +71,31 @@ fi
 bin_dir="$zvm_home/bin"
 mkdir -p "$bin_dir"
 
-find_processes_using() {
-  target="$1"
-  for proc_dir in /proc/[0-9]*; do
-    [ -r "$proc_dir/exe" ] || continue
-    process_path="$(readlink "$proc_dir/exe" 2>/dev/null || true)"
-    if [ "$process_path" = "$target" ]; then
-      printf '%s\n' "${proc_dir##*/}"
-    fi
-  done
-}
-
 copy_installed_binary() {
   source="$1"
   destination="$2"
+  temporary="$(mktemp "${destination}.tmp.XXXXXX")" || {
+    echo "error: could not create a temporary file next to $destination." >&2
+    return 1
+  }
 
-  pids="$(find_processes_using "$destination")"
-  if [ -n "$pids" ]; then
-    echo "warning: $destination is in use by:" >&2
-    for pid in $pids; do
-      process_name="$(cat "/proc/$pid/comm" 2>/dev/null || printf '%s' 'unknown')"
-      echo "  $process_name (PID $pid)" >&2
-    done
-
-    reply="n"
-    interactive_terminal=0
-    if [ "$yes" = "0" ] && [ -t 1 ] && [ -r /dev/tty ]; then
-      printf 'Terminate these process(es) and retry? [y/N] ' >/dev/tty
-      if read -r reply </dev/tty; then
-        interactive_terminal=1
-      fi
-    fi
-
-    case "$reply" in
-      [Yy]*)
-        for pid in $pids; do
-          kill -KILL "$pid" 2>/dev/null || true
-        done
-        sleep 0.25
-        ;;
-      *)
-        if [ "$interactive_terminal" = "1" ]; then
-          echo "Skipped. Close the process(es) above and retry the installation." >&2
-        else
-          echo "No interactive terminal was available. Close the process(es) above and retry the installation." >&2
-        fi
-        return 1
-        ;;
-    esac
+  if ! cp "$source" "$temporary"; then
+    rm -f "$temporary" || true
+    echo "error: could not copy $source to $temporary." >&2
+    return 1
   fi
 
-  if cp "$source" "$destination" 2>/dev/null; then
-    return 0
+  if ! chmod +x "$temporary"; then
+    rm -f "$temporary" || true
+    echo "error: could not make $temporary executable." >&2
+    return 1
   fi
 
-  echo "error: could not replace $destination." >&2
-  echo "Close programs using it and retry the installation." >&2
-  return 1
+  if ! mv -f "$temporary" "$destination"; then
+    rm -f "$temporary" || true
+    echo "error: could not replace $destination." >&2
+    return 1
+  fi
 }
 
 if [ "$build_from_source" = "1" ]; then

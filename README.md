@@ -1,6 +1,6 @@
 # zvm
 
-`zvm` is a small Zig version manager for Linux and Windows.
+`zvm` is a small Zig version manager for Linux, macOS, FreeBSD, and Windows.
 
 The main idea is simple: put zvm's `zig` shim on your PATH,
 then keep typing `zig build` (or any other zig command) like normal.
@@ -71,7 +71,7 @@ really need to bypass verification.
 
 ## Install
 
-Linux:
+Linux, macOS, and FreeBSD:
 ```sh
 curl -fsSL https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | sh
 ```
@@ -91,12 +91,12 @@ On Windows, the equivalent PowerShell parameters are `-Yes` (or `-y`),
 `-AddToPath`, and `-NoAddToPath`.
 
 If zvm is already on your PATH and matches the latest release, the installer
-does nothing. To reinstall it anyway, use `./install.ps1 --force` on Linux or
-`.\install.ps1 -Force` on Windows from a local checkout.
+does nothing. To reinstall it anyway, use `./install.ps1 --force` on a POSIX
+system or `.\install.ps1 -Force` on Windows from a local checkout.
 
 If you would rather build from a checkout:
 
-Linux:
+Linux, macOS, and FreeBSD:
 ```sh
 ./install.ps1 --build
 ```
@@ -145,12 +145,12 @@ For extra diagnostics:
 ```sh
 zvm --verbose install 0.16.0
 ```
+POSIX shells
 ```sh
-# Linux
 ZVM_DEBUG=1 zig build
 ```
+Windows PowerShell:
 ```powershell
-# Windows PowerShell
 $env:ZVM_DEBUG=1; zig build; Remove-Item Env:ZVM_DEBUG
 ```
 
@@ -162,7 +162,7 @@ to be passed through untouched to the Zig compiler.
 zvm uses `$ZVM_HOME` when it is set. Otherwise it uses:
 
 - Windows: `%LOCALAPPDATA%\zvm`
-- Linux: `$XDG_DATA_HOME/zvm`, or `~/.local/share/zvm`
+- Linux, macOS, and FreeBSD: `$XDG_DATA_HOME/zvm`, or `~/.local/share/zvm`
 
 Inside that directory you will find:
 
@@ -179,11 +179,7 @@ but is incomplete.
 
 ## Supported platforms
 
-zvm supports Linux and Windows on x86_64 and aarch64.
-
-macOS is intentionally not listed yet. It might be possible to make it work,
-but shipping a platform I cannot properly test would be a bad deal for anyone
-who tries it, but contributions are welcomed ^^.
+zvm supports Linux, macOS, FreeBSD, and Windows on x86_64 and aarch64.
 
 ## License
 

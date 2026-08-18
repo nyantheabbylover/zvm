@@ -28,7 +28,7 @@ script_path="${BASH_SOURCE:-$0}"
 case "$script_path" in
   */*)
     script_dir="$(CDPATH= cd "$(dirname "$script_path")" && pwd)"
-    installer="$script_dir/install.linux.sh"
+    installer="$script_dir/install.posix.sh"
     if [ -f "$installer" ]; then
       if [ "$zvm_installer_sourced" = "1" ]; then
         if ZVM_INSTALLER_SOURCE_MODE=1 sh "$installer" "$@"; then
@@ -53,7 +53,7 @@ fi
 if [ "$zvm_installer_sourced" = "0" ]; then
   trap 'rm -f "$tmp"' EXIT HUP INT TERM
 fi
-if ! curl -fsSL -o "$tmp" "https://git.xeondev.com/nyan/zvm/raw/branch/main/install.linux.sh"; then
+if ! curl -fsSL -o "$tmp" "https://git.xeondev.com/nyan/zvm/raw/branch/main/install.posix.sh"; then
   echo "error: failed to download the zvm installer" >&2
   rm -f "$tmp" || true
   if [ "$zvm_installer_sourced" = "1" ]; then

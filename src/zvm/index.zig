@@ -100,7 +100,7 @@ fn pickFromIndex(root: std.json.ObjectMap, key: []const u8) !?Resolved {
     const obj = entry.object;
     const version = if (obj.get("version")) |v| v.string else key;
     try validateVersion(version);
-    const t = obj.get(target.nativeTargetString()) orelse
+    const t = obj.get(target.native_target_string) orelse
         return null;
     const tobj = t.object;
     const tarball = tobj.get("tarball") orelse
@@ -128,9 +128,9 @@ fn createUnlisted(gpa: std.mem.Allocator, version: []const u8) !Resolved {
         gpa,
         "https://ziglang.org/builds/zig-{s}-{s}{s}",
         .{
-            target.nativeTargetString(),
+            target.native_target_string,
             version,
-            target.archiveExt(),
+            target.archive_ext,
         },
     );
 
@@ -194,7 +194,7 @@ test "pickFromIndex selects the native artifact and its verification metadata" {
         \\    }}
         \\  }}
         \\}}
-    , .{target.nativeTargetString()});
+    , .{target.native_target_string});
     defer std.testing.allocator.free(fixture);
 
     var parsed = try std.json.parseFromSlice(
@@ -224,7 +224,7 @@ test "pickFromIndex resolves master to its concrete development version" {
         \\    }}
         \\  }}
         \\}}
-    , .{target.nativeTargetString()});
+    , .{target.native_target_string});
     defer std.testing.allocator.free(fixture);
 
     var parsed = try std.json.parseFromSlice(
@@ -251,5 +251,5 @@ test "createUnlisted builds the expected direct download URL" {
     try std.testing.expectEqualStrings("0.17.0-dev.1609+11e2bb391", resolved.version);
     try std.testing.expect(resolved.shasum == null);
     try std.testing.expect(resolved.size == null);
-    try std.testing.expect(std.mem.endsWith(u8, resolved.tarball_url, target.archiveExt()));
+    try std.testing.expect(std.mem.endsWith(u8, resolved.tarball_url, target.archive_ext));
 }

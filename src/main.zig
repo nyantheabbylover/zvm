@@ -125,7 +125,7 @@ pub fn main(init: std.process.Init) !void {
     zvm.resolve.recordUse(&ctx, install_result.version);
 
     const version_dir = try paths.versionDir(gpa, install_result.version);
-    const exe_path = try std.fs.path.join(gpa, &.{ version_dir, zvm.target.exeName() });
+    const exe_path = try std.fs.path.join(gpa, &.{ version_dir, zvm.target.exe_name });
 
     var real_argv: std.ArrayList([]const u8) = .empty;
     try real_argv.append(gpa, exe_path);
