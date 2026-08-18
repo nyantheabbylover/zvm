@@ -1,14 +1,8 @@
 pub fn nativeTargetString() []const u8 {
-    return switch (builtin.target.os.tag) {
-        .windows => switch (builtin.target.cpu.arch) {
-            .aarch64 => "aarch64-windows",
-            else => "x86_64-windows",
-        },
-        else => switch (builtin.target.cpu.arch) {
-            .aarch64 => "aarch64-linux",
-            else => "x86_64-linux",
-        },
-    };
+    return std.fmt.comptimePrint("{t}-{t}", .{
+        builtin.target.cpu.arch,
+        builtin.target.os.tag,
+    });
 }
 
 pub fn archiveExt() []const u8 {
@@ -22,3 +16,4 @@ pub fn exeName() []const u8 {
 //
 
 const builtin = @import("builtin");
+const std = @import("std");
