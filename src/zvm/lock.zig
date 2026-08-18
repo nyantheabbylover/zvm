@@ -14,7 +14,7 @@ pub const Held = struct {
             return;
 
         while (true) {
-            const rc = std.posix.system.fcntl(self.file.handle, std.posix.F.SETFD, 0);
+            const rc = std.posix.system.fcntl(self.file.handle, std.posix.F.SETFD, @as(usize, 0));
             switch (std.posix.errno(rc)) {
                 .SUCCESS => return,
                 .INTR => continue,
