@@ -10,12 +10,13 @@ const debug = @import("debug.zig");
 /// The zvm directory layout, rooted at a per-user base directory:
 ///
 ///   versions/<version>/   extracted, installed toolchain
+///   versions/<version>/zls/  matching ZLS, installed with `zvm install --with-zls`
 ///   cache/index.json      cached download index + cache/index.meta fetch timestamp
 ///   cache/mirrors.txt     cached mirror list + cache/mirrors.meta fetch timestamp
 ///   cache/tmp/            in-progress downloads/extracts
 ///   cache/locks/          per-version install locks
 ///   config.json           default_version, last_used_version
-///   bin/                  where the zig/zvm binaries are meant to live once on PATH
+///   bin/                  where the zig/zls/zvm binaries are meant to live once on PATH
 pub const Paths = struct {
     base: []const u8,
     versions: []const u8,
@@ -55,6 +56,14 @@ pub const Paths = struct {
         try @import("version.zig").validate(version);
 
         return std.fs.path.join(gpa, &.{ self.versions, version });
+    }
+
+    /// Where the ZLS language server for a version lives, next to the
+    /// toolchain it belongs to, so `zvm remove` cleans both up together.
+    pub fn zlsDir(self: Paths, gpa: std.mem.Allocator, version: []const u8) ![]const u8 {
+        try @import("version.zig").validate(version);
+
+        return std.fs.path.join(gpa, &.{ self.versions, version, "zls" });
     }
 
     /// Creates the directory layout. Recursive, so creating `versions`,

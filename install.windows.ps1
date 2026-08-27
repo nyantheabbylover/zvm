@@ -182,6 +182,7 @@ if ($Build) {
     }
 
     Copy-InstalledBinary (Join-Path $ScriptDir "zig-out\bin\zig.exe") (Join-Path $binDir "zig.exe")
+    Copy-InstalledBinary (Join-Path $ScriptDir "zig-out\bin\zls.exe") (Join-Path $binDir "zls.exe")
     Copy-InstalledBinary (Join-Path $ScriptDir "zig-out\bin\zvm.exe") (Join-Path $binDir "zvm.exe")
 } else {
     if (-not $Force) {
@@ -218,14 +219,16 @@ if ($Build) {
         Expand-Archive -Path $zipPath -DestinationPath $extractPath
 
         $zigExe = Get-ChildItem -Path $extractPath -Recurse -Filter "zig.exe" | Select-Object -First 1
+        $zlsExe = Get-ChildItem -Path $extractPath -Recurse -Filter "zls.exe" | Select-Object -First 1
         $zvmExe = Get-ChildItem -Path $extractPath -Recurse -Filter "zvm.exe" | Select-Object -First 1
-        if (-not $zigExe -or -not $zvmExe) {
-            Write-Error "Release archive didn't contain both zig.exe and zvm.exe."
+        if (-not $zigExe -or -not $zlsExe -or -not $zvmExe) {
+            Write-Error "Release archive didn't contain zig.exe, zls.exe, and zvm.exe."
 
             exit 1
         }
 
         Copy-InstalledBinary $zigExe.FullName (Join-Path $binDir "zig.exe")
+        Copy-InstalledBinary $zlsExe.FullName (Join-Path $binDir "zls.exe")
         Copy-InstalledBinary $zvmExe.FullName (Join-Path $binDir "zvm.exe")
     }
     finally {
@@ -233,7 +236,7 @@ if ($Build) {
     }
 }
 
-Write-Host "Installed zig + zvm to $binDir"
+Write-Host "Installed zig + zls + zvm to $binDir"
 
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 $pathEntries = @()

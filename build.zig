@@ -42,6 +42,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(zvm_cli);
 
+    const zls_shim = b.addExecutable(.{
+        .name = "zls",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/zls_shim.zig"),
+            .target = target,
+            .optimize = optimize,
+            .strip = optimize != .Debug,
+            .imports = &.{
+                .{ .name = "zvm", .module = mod },
+            },
+        }),
+    });
+    b.installArtifact(zls_shim);
+
     const run_step = b.step("run", "Run the zvm CLI");
     const run_cmd = b.addRunArtifact(zvm_cli);
     run_step.dependOn(&run_cmd.step);

@@ -134,6 +134,7 @@ if [ "$build_from_source" = "1" ]; then
   (cd "$SCRIPT_DIR" && zig build -Doptimize=ReleaseFast)
 
   copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zig" "$bin_dir/zig"
+  copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zls" "$bin_dir/zls"
   copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zvm" "$bin_dir/zvm"
 else
   if [ "$force" = "0" ] && command -v zvm >/dev/null 2>&1; then
@@ -161,19 +162,21 @@ else
   tar -xf "$tmp/zvm.tar.xz" -C "$tmp/extracted"
 
   zig_bin="$(find "$tmp/extracted" -type f -name 'zig' | head -n 1)"
+  zls_bin="$(find "$tmp/extracted" -type f -name 'zls' | head -n 1)"
   zvm_bin="$(find "$tmp/extracted" -type f -name 'zvm' | head -n 1)"
-  if [ -z "$zig_bin" ] || [ -z "$zvm_bin" ]; then
-    echo "error: release archive didn't contain both 'zig' and 'zvm' binaries." >&2
+  if [ -z "$zig_bin" ] || [ -z "$zls_bin" ] || [ -z "$zvm_bin" ]; then
+    echo "error: release archive didn't contain the 'zig', 'zls', and 'zvm' binaries." >&2
     exit 1
   fi
 
   copy_installed_binary "$zig_bin" "$bin_dir/zig"
+  copy_installed_binary "$zls_bin" "$bin_dir/zls"
   copy_installed_binary "$zvm_bin" "$bin_dir/zvm"
 fi
 
-chmod +x "$bin_dir/zig" "$bin_dir/zvm"
+chmod +x "$bin_dir/zig" "$bin_dir/zls" "$bin_dir/zvm"
 
-echo "Installed zig + zvm to $bin_dir"
+echo "Installed zig + zls + zvm to $bin_dir"
 
 path_available=0
 case ":$PATH:" in

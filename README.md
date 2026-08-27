@@ -26,9 +26,12 @@ it should pick the right compiler and let you get back to your project.
 
 ## What it does
 
-There are two executables:
+There are three executables:
 
 - `zig` is the transparent shim. This is the one you put on your PATH and use day to day.
+- `zls` does the same for the Zig language server: it picks the ZLS build
+   matching the project's Zig version, installs it if needed, and runs it.
+   Your editor just needs it on PATH.
 - `zvm` is the management CLI, not really required to be on PATH,
    but useful if you use it frequently.
 
@@ -120,6 +123,12 @@ zig 0.16.0 build-exe hello.zig
 # Install something ahead of time
 zvm install 0.15.0
 
+# Install a version together with its matching ZLS (language server)
+zvm install 0.16.0 --with-zls
+
+# Run the language server for the project's Zig version (usually your editor does this)
+zls
+
 # See what you have
 zvm list
 
@@ -154,8 +163,8 @@ Windows PowerShell:
 $env:ZVM_DEBUG=1; zig build; Remove-Item Env:ZVM_DEBUG
 ```
 
-The shim does not accept `--verbose` itself because all of its arguments need
-to be passed through untouched to the Zig compiler.
+The shims do not accept `--verbose` because all of their arguments need
+to be passed through untouched to the tool.
 
 ## Where it stores things
 
@@ -167,10 +176,11 @@ zvm uses `$ZVM_HOME` when it is set. Otherwise it uses:
 Inside that directory you will find:
 
 ```text
-versions/       installed Zig toolchains
-cache/          downloaded index and mirror metadata + temporary files
-config.json     default and most recently used versions
-bin/            the zvm `zig` shim and `zvm` CLI
+versions/            installed Zig toolchains
+versions/<v>/zls/    matching ZLS, when installed with --with-zls
+cache/               downloaded index and mirror metadata + temporary files
+config.json          default and most recently used versions
+bin/                 the zvm `zig`/`zls` shims and `zvm` CLI
 ```
 
 An installed version is only moved into `versions/` after extraction finishes,

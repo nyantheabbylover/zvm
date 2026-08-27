@@ -8,6 +8,7 @@ pub fn main(init: std.process.Init) !void {
 
     var argv_list: std.ArrayList([]const u8) = .empty;
     var skip_verification = false;
+    var with_zls = false;
     for (raw_argv) |a| {
         if (std.mem.eql(u8, a, "--verbose") or
             std.mem.eql(u8, a, "-v"))
@@ -19,6 +20,12 @@ pub fn main(init: std.process.Init) !void {
 
         if (std.mem.eql(u8, a, "--no-verify")) {
             skip_verification = true;
+
+            continue;
+        }
+
+        if (std.mem.eql(u8, a, "--with-zls")) {
+            with_zls = true;
 
             continue;
         }
@@ -98,13 +105,25 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
+    if (with_zls and !is_install) {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: --with-zls is only valid with install/add\n",
+            .{},
+        );
+        try errw.writer.flush();
+
+        std.process.exit(1);
+    }
+
     if (std.mem.eql(u8, cmd, "version") or
         std.mem.eql(u8, cmd, "--version") or
         std.mem.eql(u8, cmd, "-V"))
     {
         try out.writer.print("{s}\n", .{zvm.app_version});
     } else if (is_install) {
-        try cmdInstall(&ctx, out, errw, rest);
+        try cmdInstall(&ctx, out, errw, rest, with_zls);
     } else if (std.mem.eql(u8, cmd, "list") or
         std.mem.eql(u8, cmd, "ls"))
     {
@@ -149,6 +168,7 @@ fn cmdInstall(
     out: Io.Terminal,
     errw: Io.Terminal,
     args: []const []const u8,
+    with_zls: bool,
 ) !void {
     const resolution = if (args.len > 0)
         zvm.resolve.Resolution{ .version = args[0], .source = .override }
@@ -186,6 +206,36 @@ fn cmdInstall(
 
         std.process.exit(1);
     };
+
+    if (with_zls) {
+        const zls_result = zvm.zls.install(ctx, result.version, root_progress) catch |e| {
+            root_progress.end();
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: failed to install zls for zig {s}: {t}\n",
+                .{ result.version, e },
+            );
+            try errw.writer.flush();
+
+            std.process.exit(1);
+        };
+        if (zls_result.already_installed) {
+            try zvm.color.print(
+                out,
+                .dim,
+                "zls {s} is already installed\n",
+                .{zls_result.zig_version},
+            );
+        } else {
+            try zvm.color.print(
+                out,
+                .green,
+                "installed zls {s}\n",
+                .{zls_result.zig_version},
+            );
+        }
+    }
     root_progress.end();
 
     if (ctx.skip_verification and !result.already_installed) {
@@ -258,7 +308,19 @@ fn cmdList(
 
         const is_default = cfg.default_version != null and std.mem.eql(u8, cfg.default_version.?, entry.name);
         const is_recent = cfg.last_used_version != null and std.mem.eql(u8, cfg.last_used_version.?, entry.name);
+        // Stray directories that are not valid versions simply have no ZLS.
+        const zls_dir = ctx.paths.zlsDir(ctx.gpa, entry.name) catch |err| switch (err) {
+            error.InvalidVersion => null,
+            else => return err,
+        };
+        var has_zls = false;
+        if (zls_dir) |zls_path| {
+            defer ctx.gpa.free(zls_path);
+            has_zls = zvm.resolve.isInstalled(ctx, zls_path);
+        }
         try zvm.color.print(out, .cyan, "  {s}", .{entry.name});
+        if (has_zls)
+            try zvm.color.print(out, .dim, "  (zls)", .{});
         if (is_default)
             try zvm.color.print(out, .cyan, "  (default)", .{});
         if (is_recent)
@@ -503,11 +565,12 @@ fn printHelp(t: Io.Terminal) !void {
     try zvm.color.print(t, .yellow, "Options:\n", .{});
     try helpEntry(t, "--verbose", "Show version resolution, mirror, and cache decisions");
     try helpEntry(t, "--no-verify", "Skip verification for install/add (unsafe)");
+    try helpEntry(t, "--with-zls", "Also install the matching ZLS language server (install/add only)");
     try t.writer.print("\n", .{});
 
-    try zvm.color.print(t, .dim, "The `zig` shim auto-selects a version from build.zig.zon.\n", .{});
-    try zvm.color.print(t, .dim, "Override it with `zig 0.16.0 build`. Set ZVM_DEBUG=1 for shim debug output.\n", .{});
-    try zvm.color.print(t, .dim, "The shim cannot take --verbose itself as the remaining arguments go to Zig.\n", .{});
+    try zvm.color.print(t, .dim, "The `zig` and `zls` shims auto-select a version from build.zig.zon.\n", .{});
+    try zvm.color.print(t, .dim, "Override it with `zig 0.16.0 build` or `zls 0.16.0`. Set ZVM_DEBUG=1 for shim debug output.\n", .{});
+    try zvm.color.print(t, .dim, "The shims cannot take --verbose themselves as the remaining arguments go to the tool.\n", .{});
 }
 
 fn helpEntry(t: Io.Terminal, command: []const u8, description: []const u8) !void {

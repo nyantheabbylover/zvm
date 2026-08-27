@@ -23,6 +23,7 @@ pub const resolve = @import("zvm/resolve.zig");
 pub const retry = @import("zvm/retry.zig");
 pub const target = @import("zvm/target.zig");
 pub const version = @import("zvm/version.zig");
+pub const zls = @import("zvm/zls.zig");
 pub const zon_scan = @import("zvm/zon_scan.zig");
 
 //

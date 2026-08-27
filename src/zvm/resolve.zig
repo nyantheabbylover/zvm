@@ -461,7 +461,7 @@ fn isAffirmative(input: []const u8) bool {
     return std.ascii.eqlIgnoreCase(answer, "y") or std.ascii.eqlIgnoreCase(answer, "yes");
 }
 
-fn urlBasename(url: []const u8) []const u8 {
+pub fn urlBasename(url: []const u8) []const u8 {
     const q = std.mem.indexOfScalar(u8, url, '?') orelse url.len;
     const path_part = url[0..q];
     const slash = std.mem.lastIndexOfScalar(u8, path_part, '/') orelse

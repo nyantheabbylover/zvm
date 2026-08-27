@@ -9,6 +9,10 @@ pub const archive_ext: []const u8 =
 pub const exe_name: []const u8 =
     if (builtin.target.os.tag == .windows) "zig.exe" else "zig";
 
+pub fn zlsExeName() []const u8 {
+    return if (builtin.target.os.tag == .windows) "zls.exe" else "zls";
+}
+
 //
 
 const builtin = @import("builtin");
