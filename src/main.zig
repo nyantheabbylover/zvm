@@ -76,18 +76,10 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    const root_progress = std.Progress.start(
-        io,
-        .{
-            .root_name = "zvm",
-        },
-    );
     var use_result = zvm.resolve.ensureInstalledForUse(
         &ctx,
         resolution.version,
-        root_progress,
     ) catch |e| {
-        root_progress.end();
         if (zvm.resolve.installErrorHint(e)) |hint| {
             try zvm.color.print(
                 errw,
@@ -107,7 +99,6 @@ pub fn main(init: std.process.Init) !void {
 
         std.process.exit(1);
     };
-    root_progress.end();
     defer use_result.version_lock.release(io);
 
     const install_result = use_result.install;
