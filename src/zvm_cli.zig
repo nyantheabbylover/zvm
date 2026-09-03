@@ -190,14 +190,10 @@ fn cmdInstall(
         try errw.writer.flush();
         std.process.exit(1);
     }
-
-    const root_progress = std.Progress.start(ctx.io, .{ .root_name = "zvm install" });
     const result = zvm.resolve.ensureInstalled(
         ctx,
         resolution.version,
-        root_progress,
     ) catch |e| {
-        root_progress.end();
         if (zvm.resolve.installErrorHint(e)) |hint| {
             try zvm.color.print(
                 errw,
@@ -217,10 +213,10 @@ fn cmdInstall(
 
         std.process.exit(1);
     };
-
     if (with_zls) {
-        const zls_result = zvm.zls.install(ctx, result.version, root_progress) catch |e| {
-            root_progress.end();
+        const zls_progress = std.Progress.start(ctx.io, .{ .root_name = "zvm install zls" });
+        const zls_result = zvm.zls.install(ctx, result.version, zls_progress) catch |e| {
+            zls_progress.end();
             if (zvm.zls.installErrorHint(e)) |hint| {
                 try zvm.color.print(
                     errw,
@@ -255,8 +251,8 @@ fn cmdInstall(
                 .{ zls_result.zls_version.?, zls_result.zig_version },
             );
         }
+        zls_progress.end();
     }
-    root_progress.end();
 
     if (ctx.skip_verification and !result.already_installed) {
         try zvm.color.print(

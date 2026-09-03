@@ -196,13 +196,15 @@ fn displayPath(gpa: std.mem.Allocator, io: Io, dir: Io.Dir) []const u8 {
 pub fn ensureInstalled(
     ctx: *Context,
     requested_version: []const u8,
-    progress: std.Progress.Node,
 ) !InstallResult {
     const result = try ensureInstalledInner(
         ctx,
         requested_version,
-        progress,
         false,
+        .{
+            .root_name = "zvm install",
+            .announce_resolve = true,
+        },
     );
 
     return result.install;
@@ -211,13 +213,15 @@ pub fn ensureInstalled(
 pub fn ensureInstalledForUse(
     ctx: *Context,
     requested_version: []const u8,
-    progress: std.Progress.Node,
 ) !UseResult {
     const result = try ensureInstalledInner(
         ctx,
         requested_version,
-        progress,
         true,
+        .{
+            .root_name = "zvm",
+            .announce_resolve = false,
+        },
     );
 
     return .{
@@ -231,30 +235,32 @@ const EnsureResult = struct {
     version_lock: ?lock.Held,
 };
 
+const DisplayOptions = struct {
+    /// Root label of the progress display used for the download and extract
+    /// steps.
+    root_name: []const u8,
+    /// Print a plain status line while the version is being resolved.
+    /// The `zig` shim runs on every invocation and stays silent.
+    announce_resolve: bool,
+};
+
 fn ensureInstalledInner(
     ctx: *Context,
     requested_version: []const u8,
-    progress: std.Progress.Node,
     retain_lock: bool,
+    display: DisplayOptions,
 ) !EnsureResult {
     try validateVersion(requested_version);
-    const resolve_label = try std.fmt.allocPrint(
-        ctx.gpa,
-        "resolve zig {s}",
-        .{requested_version},
-    );
-    const resolve_node = progress.start(resolve_label, 0);
+    if (display.announce_resolve) {
+        printStatus(ctx, "zvm: resolving zig {s}...\n", .{requested_version});
+    }
 
-    const resolved = index.resolve(
+    const resolved = try index.resolve(
         ctx.gpa,
         ctx.io,
         ctx.paths,
         requested_version,
-    ) catch |err| {
-        resolve_node.end();
-
-        return err;
-    };
+    );
 
     const final_dir = try ctx.paths.versionDir(ctx.gpa, resolved.version);
     var version_lock: ?lock.Held = null;
@@ -296,8 +302,6 @@ fn ensureInstalledInner(
     // waiting for the lock.
     if (isInstalled(ctx, final_dir)) {
         debug.log("{s} already installed at {s}", .{ resolved.version, final_dir });
-
-        resolve_node.end();
 
         if (retain_lock) {
             if (holding_exclusive_lock) {
@@ -344,6 +348,13 @@ fn ensureInstalledInner(
     } else null;
     const verified = ctx.skip_verification or resolved.shasum != null or minisign_signature != null;
 
+    // The verification decision is final here, so start the progress display
+    // only now: an active display would redraw stderr over the confirmation
+    // prompt shown above, and std.Progress cannot be paused or restarted
+    // once it has ended.
+    const root = std.Progress.start(ctx.io, .{ .root_name = display.root_name });
+    errdefer root.end();
+
     const install_tmp = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.tmp, resolved.version });
     const scratch = try std.fs.path.join(ctx.gpa, &.{ install_tmp, "extract" });
     const archive_name = urlBasename(resolved.tarball_url);
@@ -367,8 +378,6 @@ fn ensureInstalledInner(
         },
     );
 
-    resolve_node.end();
-
     const download_label = try std.fmt.allocPrint(ctx.gpa, "zig {s}", .{resolved.version});
     try download(
         ctx.gpa,
@@ -379,7 +388,7 @@ fn ensureInstalledInner(
         minisign_signature,
         .zig,
         download_label,
-        progress,
+        root,
     );
 
     const extract_label = try std.fmt.allocPrint(ctx.gpa, "extract zig {s}", .{resolved.version});
@@ -390,12 +399,13 @@ fn ensureInstalledInner(
         scratch,
         final_dir,
         extract_label,
-        progress,
+        root,
     );
 
-    const cleanup_node = progress.start("cleaning up", 0);
+    const cleanup_node = root.start("cleaning up", 0);
     retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
     cleanup_node.end();
+    root.end();
 
     if (retain_lock) {
         try version_lock.?.downgrade(ctx.io);
@@ -430,6 +440,9 @@ pub fn isInstalled(ctx: *Context, final_dir: []const u8) bool {
     return true;
 }
 
+// No progress display is active while this prompt is shown: it is started
+// only after the verification decision, so the prompt can never be redrawn
+// over (std.Progress has no pause and ends permanently).
 fn confirmUnverified(ctx: *Context, version: []const u8) bool {
     const stdin = Io.File.stdin();
     if (!(stdin.isTty(ctx.io) catch return false))
@@ -442,7 +455,7 @@ fn confirmUnverified(ctx: *Context, version: []const u8) bool {
         \\signature could not be retrieved. The downloaded compiler cannot be verified.
     , .{version}) catch
         return false;
-    stderr.interface.print("Install it anyway? [y/n] ", .{}) catch
+    stderr.interface.print(" Install it anyway? [y/N] ", .{}) catch
         return false;
     stderr.interface.flush() catch
         return false;
@@ -460,6 +473,13 @@ fn isAffirmative(input: []const u8) bool {
     const answer = std.mem.trim(u8, input, " \t\r\n");
 
     return std.ascii.eqlIgnoreCase(answer, "y") or std.ascii.eqlIgnoreCase(answer, "yes");
+}
+
+fn printStatus(ctx: *Context, comptime format: []const u8, args: anytype) void {
+    var stderr_buf: [256]u8 = undefined;
+    var stderr = Io.File.Writer.init(.stderr(), ctx.io, &stderr_buf);
+    stderr.interface.print(format, args) catch {};
+    stderr.interface.flush() catch {};
 }
 
 pub fn urlBasename(url: []const u8) []const u8 {
