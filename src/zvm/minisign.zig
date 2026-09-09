@@ -227,3 +227,21 @@ test "parse padded Minisign signature" {
     verifier.update(parsed.trusted_comment);
     try verifier.verify();
 }
+
+test "parse ZLS Minisign signature with the pinned key" {
+    const signature =
+        "untrusted comment: signature from minisign secret key\n" ++
+        "RUR+9B91GBZ0zKpvKRpfuRrIxHeJCQKmnsr3BbIAystMje6/MTrBHAyUJyS8ckxj2CLd2JGTACJUKozvXIrCAF8sJ0nTJyokJA4=\n" ++
+        "trusted comment: timestamp:1776369627\tfile:zls-x86_64-linux-0.16.0.tar.xz\thashed\n" ++
+        "d4PlpQRAzVVxHmrtLU7xlTB+Lbpe6HhOF/q4FCauoHPguaM4U1RwjB8JV4mXmsOTnPjD+CTrFnkUZXN3h1w/CQ==\n";
+
+    const parsed = try parseSignature(signature, .zls);
+    try std.testing.expectEqualStrings(
+        "timestamp:1776369627\tfile:zls-x86_64-linux-0.16.0.tar.xz\thashed",
+        parsed.trusted_comment,
+    );
+    try std.testing.expectError(
+        error.UnknownMinisignKey,
+        parseSignature(signature, .zig),
+    );
+}

@@ -126,6 +126,7 @@ fn isUnreserved(c: u8) bool {
 /// Downloads and installs the ZLS build matching `zig_version` into
 /// `versions/<zig_version>/zls`, next to the toolchain it belongs to.
 pub fn install(ctx: *Context, zig_version: []const u8, progress: std.Progress.Node) !InstallResult {
+    try validateVersion(zig_version);
     if (!target.zls_supported)
         return error.ZlsTargetUnsupported;
 
@@ -141,6 +142,8 @@ pub fn install(ctx: *Context, zig_version: []const u8, progress: std.Progress.No
 /// server runs. A separate installation lock serializes the mutation of the
 /// ZLS directory when multiple shims start at the same time.
 pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progress.Node) !InstallResult {
+    try validateVersion(zig_version);
+
     const zls_install_lock_name = try std.fmt.allocPrint(
         ctx.gpa,
         "{s}.zls.install",
@@ -255,7 +258,6 @@ fn isZlsInstalled(ctx: *Context, zls_dir: []const u8) bool {
     var file = Io.Dir.cwd().openFile(ctx.io, executable, .{}) catch
         return false;
     file.close(ctx.io);
-
     return true;
 }
 
@@ -274,6 +276,7 @@ pub fn installErrorHint(err: anyerror) ?[]const u8 {
     return switch (err) {
         error.ZlsTargetUnsupported => "no prebuilt ZLS is available for this target",
         error.ZlsVersionUnsupported => "no compatible ZLS release is available for this Zig version",
+        error.ZlsApiError, error.ZlsIndexInvalid => "the ZLS release service returned invalid metadata",
         error.ZlsVerificationUnavailable => "the ZLS download could not be verified; use --no-verify to override",
         error.ChecksumMismatch,
         error.InvalidMinisignSignature,
@@ -409,8 +412,6 @@ test "parseResponse rejects responses without a native artifact" {
     );
 }
 
-// test a
-
 test "parseResponse rejects API error payloads" {
     const fixture =
         \\{"error":"Query component 'zig_version' with value 'master' is not a valid version!"}
@@ -478,10 +479,6 @@ test "installLocked reports an installed ZLS without resolving" {
         allocator,
         &.{ zls_dir, target.zlsExeName() },
     );
-    try Io.Dir.cwd().writeFile(std.testing.io, .{
-        .sub_path = zls_executable,
-        .data = "placeholder",
-    });
 
     const paths = Paths{
         .base = base,
@@ -502,6 +499,13 @@ test "installLocked reports an installed ZLS without resolving" {
         .io = std.testing.io,
         .paths = paths,
     };
+
+    try std.testing.expect(!isInstalledAt(&ctx, zls_dir));
+    try Io.Dir.cwd().writeFile(std.testing.io, .{
+        .sub_path = zls_executable,
+        .data = "placeholder",
+    });
+    try std.testing.expect(isInstalledAt(&ctx, zls_dir));
 
     const progress = std.Progress.start(std.testing.io, .{ .root_name = "test" });
     defer progress.end();
