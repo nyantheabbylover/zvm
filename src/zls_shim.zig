@@ -88,18 +88,10 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    const root_progress = std.Progress.start(
-        io,
-        .{
-            .root_name = "zvm",
-        },
-    );
     var use_result = zvm.resolve.ensureInstalledForUse(
         &ctx,
         resolution.version,
-        root_progress,
     ) catch |e| {
-        root_progress.end();
         if (zvm.resolve.installErrorHint(e)) |hint| {
             try zvm.color.print(
                 errw,
@@ -134,12 +126,18 @@ pub fn main(init: std.process.Init) !void {
     }
 
     // The version lock is already held, so this skips its own acquisition.
+    const zls_progress = std.Progress.start(
+        io,
+        .{
+            .root_name = "zvm",
+        },
+    );
     _ = zvm.zls.installLocked(
         &ctx,
         install_result.version,
-        root_progress,
+        zls_progress,
     ) catch |e| {
-        root_progress.end();
+        zls_progress.end();
         if (zvm.zls.installErrorHint(e)) |hint| {
             try zvm.color.print(
                 errw,
@@ -159,7 +157,7 @@ pub fn main(init: std.process.Init) !void {
 
         std.process.exit(1);
     };
-    root_progress.end();
+    zls_progress.end();
 
     zvm.resolve.recordUse(&ctx, install_result.version);
 
