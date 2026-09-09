@@ -30,10 +30,14 @@ There are three executables:
 
 - `zig` is the transparent shim. This is the one you put on your PATH and use day to day.
 - `zls` does the same for the Zig language server: it picks the ZLS build
-   matching the project's Zig version, installs it if needed, and runs it.
-   Your editor just needs it on PATH.
+   compatible with the project's Zig version, installs it if needed, and runs
+   it. Your editor just needs it on PATH.
 - `zvm` is the management CLI, not really required to be on PATH,
    but useful if you use it frequently.
+
+ZLS is available when the ZLS project publishes a prebuilt artifact for your
+platform. zvm itself still supports FreeBSD, but managed ZLS currently does not
+have an official FreeBSD build.
 
 When the shim needs to choose a version, it checks these in order:
 
@@ -72,6 +76,11 @@ After that, the IDE should find the cached compiler, restarting the IDE may be n
 There is also `zvm --no-verify install <version>` for situations where you
 really need to bypass verification.
 
+When ZLS is requested, zvm verifies its release with the checksum supplied by
+the ZLS release service. If a checksum is unavailable, it falls back to the
+adjacent official Minisign signature; it refuses to install a ZLS release that
+cannot be verified unless `--no-verify` is used.
+
 ## Install
 
 Linux, macOS, and FreeBSD:
@@ -84,9 +93,9 @@ Windows:
 irm https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | iex
 ```
 
-Both commands use the same cross-platform installer. It installs `zig` and
-`zvm` into zvm's `bin` directory and offers to add that directory to your
-PATH.
+Both commands use the same cross-platform installer. It installs the `zig` and
+`zls` shims plus the `zvm` CLI into zvm's `bin` directory and offers to add that
+directory to your PATH.
 
 For unattended installs, use `-y` / `--yes` to accept the normal defaults,
 or choose PATH setup explicitly with `--add-to-path` or `--no-add-to-path`.
@@ -190,6 +199,8 @@ but is incomplete.
 ## Supported platforms
 
 zvm supports Linux, macOS, FreeBSD, and Windows on x86_64 and aarch64.
+Managed ZLS downloads are currently available for Linux, macOS, and Windows;
+FreeBSD ZLS support will be enabled when an official prebuilt is published.
 
 ## License
 
