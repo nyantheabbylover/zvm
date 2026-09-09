@@ -13,13 +13,14 @@ const debug = @import("debug.zig");
 const download = @import("download.zig").download;
 const extract = @import("extract.zig");
 const lock = @import("lock.zig");
+const minisign = @import("minisign.zig");
+const net = @import("net.zig");
 const retry = @import("retry.zig");
 const target = @import("target.zig");
 const validateVersion = @import("version.zig").validate;
 
 const Paths = @import("paths.zig").Paths;
 const Context = @import("resolve.zig").Context;
-const isInstalled = @import("resolve.zig").isInstalled;
 const urlBasename = @import("resolve.zig").urlBasename;
 
 const api_url = "https://releases.zigtools.org/v1/zls/select-version";
@@ -35,6 +36,9 @@ pub const Resolved = struct {
 pub const InstallResult = struct {
     /// The Zig version this ZLS build was selected for.
     zig_version: []const u8,
+    /// The actual ZLS release selected by the resolver. This is null when a
+    /// previously installed ZLS was reused without querying the API.
+    zls_version: ?[]const u8,
     /// `true` when this ZLS was already cached and nothing was downloaded.
     already_installed: bool,
 };
@@ -43,6 +47,8 @@ pub const InstallResult = struct {
 /// API. The response is cached under `cache/zls-<version>.json`.
 pub fn resolve(gpa: std.mem.Allocator, io: Io, paths: Paths, zig_version: []const u8) !Resolved {
     try validateVersion(zig_version);
+    if (!target.zls_supported)
+        return error.ZlsTargetUnsupported;
 
     const url = try apiUrl(gpa, zig_version);
     defer gpa.free(url);
@@ -120,6 +126,9 @@ fn isUnreserved(c: u8) bool {
 /// Downloads and installs the ZLS build matching `zig_version` into
 /// `versions/<zig_version>/zls`, next to the toolchain it belongs to.
 pub fn install(ctx: *Context, zig_version: []const u8, progress: std.Progress.Node) !InstallResult {
+    if (!target.zls_supported)
+        return error.ZlsTargetUnsupported;
+
     // Serialize with zig installs and removals of the same version.
     var version_lock = try lock.acquire(ctx.gpa, ctx.io, ctx.paths.locks, zig_version);
     defer version_lock.release(ctx.io);
@@ -152,7 +161,11 @@ pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progr
     if (isZlsInstalled(ctx, zls_dir)) {
         debug.log("zls for {s} already installed at {s}", .{ zig_version, zls_dir });
 
-        return .{ .zig_version = zig_version, .already_installed = true };
+        return .{
+            .zig_version = zig_version,
+            .zls_version = null,
+            .already_installed = true,
+        };
     }
 
     const resolved = try resolve(ctx.gpa, ctx.io, ctx.paths, zig_version);
@@ -171,6 +184,30 @@ pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progr
     try Io.Dir.cwd().createDirPath(ctx.io, install_tmp);
     errdefer retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
 
+    const minisign_signature: ?[]u8 = if (!ctx.skip_verification and resolved.shasum == null) blk: {
+        const signature_url = try std.fmt.allocPrint(
+            ctx.gpa,
+            "{s}.minisig",
+            .{resolved.tarball_url},
+        );
+        defer ctx.gpa.free(signature_url);
+
+        const signature = net.get(ctx.gpa, ctx.io, signature_url) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => return error.ZlsVerificationUnavailable,
+        };
+        if (signature.status != .ok) {
+            ctx.gpa.free(signature.body);
+            return error.ZlsVerificationUnavailable;
+        }
+
+        break :blk signature.body;
+    } else null;
+    defer if (minisign_signature) |signature| ctx.gpa.free(signature);
+
+    if (!ctx.skip_verification and resolved.shasum == null and minisign_signature == null)
+        return error.ZlsVerificationUnavailable;
+
     const urls = &[_][]const u8{resolved.tarball_url};
     const download_label = try std.fmt.allocPrint(ctx.gpa, "zls {s}", .{zig_version});
     try download(
@@ -179,7 +216,8 @@ pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progr
         urls,
         archive_path,
         if (ctx.skip_verification) null else resolved.shasum,
-        null,
+        minisign_signature,
+        .zls,
         download_label,
         progress,
     );
@@ -199,7 +237,11 @@ pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progr
     retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
     cleanup_node.end();
 
-    return .{ .zig_version = zig_version, .already_installed = false };
+    return .{
+        .zig_version = zig_version,
+        .zls_version = resolved.version,
+        .already_installed = false,
+    };
 }
 
 fn isZlsInstalled(ctx: *Context, zls_dir: []const u8) bool {
@@ -217,6 +259,28 @@ fn isZlsInstalled(ctx: *Context, zls_dir: []const u8) bool {
     return true;
 }
 
+pub fn isInstalled(ctx: *Context, zig_version: []const u8) bool {
+    const zls_dir = ctx.paths.zlsDir(ctx.gpa, zig_version) catch return false;
+    defer ctx.gpa.free(zls_dir);
+
+    return isZlsInstalled(ctx, zls_dir);
+}
+
+pub fn installErrorHint(err: anyerror) ?[]const u8 {
+    return switch (err) {
+        error.ZlsTargetUnsupported => "no prebuilt ZLS is available for this target",
+        error.ZlsVersionUnsupported => "no compatible ZLS release is available for this Zig version",
+        error.ZlsVerificationUnavailable => "the ZLS download could not be verified; use --no-verify to override",
+        error.ChecksumMismatch,
+        error.InvalidMinisignSignature,
+        error.UnknownMinisignKey,
+        error.InvalidArchiveSignature,
+        error.InvalidGlobalSignature,
+        => "the ZLS download failed verification",
+        else => null,
+    };
+}
+
 /// The returned slices are allocated from `gpa`; free them with the same
 /// allocator once the result is no longer needed.
 fn parseResponse(gpa: std.mem.Allocator, body: []const u8) !Resolved {
@@ -227,7 +291,27 @@ fn parseResponse(gpa: std.mem.Allocator, body: []const u8) !Resolved {
         .{},
     );
     defer parsed.deinit();
-    const root = parsed.value.object;
+    const root = switch (parsed.value) {
+        .object => |object| object,
+        else => return error.ZlsIndexInvalid,
+    };
+
+    if (root.get("code")) |code| {
+        const code_number = switch (code) {
+            .integer => |number| number,
+            else => return error.ZlsIndexInvalid,
+        };
+        _ = root.get("message") orelse
+            return error.ZlsIndexInvalid;
+
+        return if (code_number == 4)
+            error.ZlsVersionUnsupported
+        else
+            error.ZlsApiError;
+    }
+
+    if (root.get("error")) |_|
+        return error.ZlsApiError;
 
     const version = root.get("version") orelse
         return error.ZlsIndexInvalid;
@@ -238,7 +322,10 @@ fn parseResponse(gpa: std.mem.Allocator, body: []const u8) !Resolved {
 
     const entry = root.get(target.native_target_string) orelse
         return error.ZlsTargetUnsupported;
-    const entry_obj = entry.object;
+    const entry_obj = switch (entry) {
+        .object => |object| object,
+        else => return error.ZlsIndexInvalid,
+    };
 
     const tarball = entry_obj.get("tarball") orelse
         return error.ZlsIndexInvalid;
@@ -258,7 +345,7 @@ fn parseResponse(gpa: std.mem.Allocator, body: []const u8) !Resolved {
     const size: ?u64 = blk: {
         const s = entry_obj.get("size") orelse break :blk null;
         break :blk switch (s) {
-            .integer => |i| @intCast(i),
+            .integer => |i| if (i >= 0) @intCast(i) else null,
             .string => |str| std.fmt.parseInt(u64, str, 10) catch null,
             else => null,
         };
@@ -325,8 +412,25 @@ test "parseResponse rejects API error payloads" {
         \\{"error":"Query component 'zig_version' with value 'master' is not a valid version!"}
     ;
     try std.testing.expectError(
-        error.ZlsIndexInvalid,
+        error.ZlsApiError,
         parseResponse(std.testing.allocator, fixture),
+    );
+}
+
+test "parseResponse maps unsupported Zig API errors" {
+    const fixture =
+        \\{"code":4,"message":"Zig 0.15.0 is unsupported by ZLS"}
+    ;
+    try std.testing.expectError(
+        error.ZlsVersionUnsupported,
+        parseResponse(std.testing.allocator, fixture),
+    );
+}
+
+test "parseResponse rejects non-object API responses" {
+    try std.testing.expectError(
+        error.ZlsIndexInvalid,
+        parseResponse(std.testing.allocator, "[]"),
     );
 }
 

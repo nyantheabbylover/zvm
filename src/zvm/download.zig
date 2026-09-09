@@ -5,6 +5,7 @@ pub fn download(
     dest_path: []const u8,
     expected_sha256_hex: ?[]const u8,
     minisign_signature: ?[]const u8,
+    minisign_key: minisign.TrustedKey,
     label: []const u8,
     progress_parent: std.Progress.Node,
 ) !void {
@@ -21,6 +22,7 @@ pub fn download(
             dest_path,
             expected_sha256_hex,
             minisign_signature,
+            minisign_key,
             label,
             node,
         ) catch |err| {
@@ -45,6 +47,7 @@ fn attempt(
     dest_path: []const u8,
     expected_sha256_hex: ?[]const u8,
     minisign_signature: ?[]const u8,
+    minisign_key: minisign.TrustedKey,
     label: []const u8,
     progress_parent: std.Progress.Node,
 ) !void {
@@ -112,7 +115,7 @@ fn attempt(
         if (!std.ascii.eqlIgnoreCase(hex, expected))
             return error.ChecksumMismatch;
     } else if (minisign_signature) |signature| {
-        try minisign.verifyFile(io, dest_path, signature);
+        try minisign.verifyFile(io, dest_path, signature, minisign_key);
     }
 }
 

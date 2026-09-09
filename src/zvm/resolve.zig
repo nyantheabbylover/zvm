@@ -377,6 +377,7 @@ fn ensureInstalledInner(
         archive_path,
         if (ctx.skip_verification) null else resolved.shasum,
         minisign_signature,
+        .zig,
         download_label,
         progress,
     );

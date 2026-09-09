@@ -5,6 +5,12 @@ const Io = std.Io;
 //
 
 const zig_public_key = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U";
+const zls_public_key = "RWR+9B91GBZ0zOjh6Lr17+zKf5BoSuFvrx2xSeDE57uIYvnKBGmMjOex";
+
+pub const TrustedKey = enum {
+    zig,
+    zls,
+};
 
 const ParsedSignature = struct {
     signature: Ed25519.Signature,
@@ -12,8 +18,13 @@ const ParsedSignature = struct {
     global_signature: Ed25519.Signature,
 };
 
-pub fn verifyFile(io: Io, path: []const u8, signature_text: []const u8) !void {
-    const parsed = try parseSignature(signature_text);
+pub fn verifyFile(
+    io: Io,
+    path: []const u8,
+    signature_text: []const u8,
+    trusted_key: TrustedKey,
+) !void {
+    const parsed = try parseSignature(signature_text, trusted_key);
 
     var file = try Io.Dir.cwd().openFile(io, path, .{});
     defer file.close(io);
@@ -30,10 +41,10 @@ pub fn verifyFile(io: Io, path: []const u8, signature_text: []const u8) !void {
 
     var digest: [std.crypto.hash.blake2.Blake2b512.digest_length]u8 = undefined;
     hash.final(&digest);
-    try verifyDigest(parsed, &digest, try zigPublicKey());
+    try verifyDigest(parsed, &digest, try publicKey(trusted_key));
 }
 
-fn parseSignature(text: []const u8) !ParsedSignature {
+fn parseSignature(text: []const u8, trusted_key: TrustedKey) !ParsedSignature {
     const trusted_comment_prefix = "trusted comment: ";
 
     var lines = std.mem.splitScalar(u8, text, '\n');
@@ -58,7 +69,7 @@ fn parseSignature(text: []const u8) !ParsedSignature {
     if (!std.mem.eql(u8, signed[0..2], "ED"))
         return error.UnsupportedMinisignAlgorithm;
 
-    const key = try zigPublicKeyBytes();
+    const key = try publicKeyBytes(trusted_key);
     if (!std.mem.eql(u8, signed[2..10], key[2..10]))
         return error.UnknownMinisignKey;
 
@@ -84,15 +95,19 @@ fn verifyDigest(parsed: ParsedSignature, digest: []const u8, public_key: Ed25519
         return error.InvalidGlobalSignature;
 }
 
-fn zigPublicKey() !Ed25519.PublicKey {
-    const encoded = try zigPublicKeyBytes();
+fn publicKey(trusted_key: TrustedKey) !Ed25519.PublicKey {
+    const encoded = try publicKeyBytes(trusted_key);
 
     return Ed25519.PublicKey.fromBytes(encoded[10..42].*) catch
         return error.InvalidMinisignPublicKey;
 }
 
-fn zigPublicKeyBytes() ![42]u8 {
-    const encoded = try decodeFixed(42, zig_public_key);
+fn publicKeyBytes(trusted_key: TrustedKey) ![42]u8 {
+    const encoded_key = switch (trusted_key) {
+        .zig => zig_public_key,
+        .zls => zls_public_key,
+    };
+    const encoded = try decodeFixed(42, encoded_key);
     if (!std.mem.eql(u8, encoded[0..2], "Ed"))
         return error.InvalidMinisignPublicKey;
 
@@ -120,18 +135,22 @@ fn trimCr(line: []const u8) []const u8 {
 //
 
 test "pinned Zig Minisign public key is valid" {
-    _ = try zigPublicKey();
+    _ = try publicKey(.zig);
+}
+
+test "pinned ZLS Minisign public key is valid" {
+    _ = try publicKey(.zls);
 }
 
 test "parseSignature rejects malformed signatures" {
     try std.testing.expectError(
         error.InvalidMinisignSignature,
-        parseSignature("definitely not a signature"),
+        parseSignature("definitely not a signature", .zig),
     );
 }
 
 test "parseSignature accepts padded CRLF Minisign structure" {
-    const key = try zigPublicKeyBytes();
+    const key = try publicKeyBytes(.zig);
     var signature_bytes: [74]u8 = @splat(0);
     @memcpy(signature_bytes[0..2], "ED");
     @memcpy(signature_bytes[2..10], key[2..10]);
@@ -149,7 +168,7 @@ test "parseSignature accepts padded CRLF Minisign structure" {
     );
     defer std.testing.allocator.free(text);
 
-    const parsed = try parseSignature(text);
+    const parsed = try parseSignature(text, .zig);
     try std.testing.expectEqualStrings("timestamp:0", parsed.trusted_comment);
 }
 
@@ -196,14 +215,14 @@ test "parse padded Minisign signature" {
         "trusted comment: timestamp:1785685616\tfile:zig-x86_64-linux-0.17.0-dev.1525+91c6d8a09.tar.xz\thashed\n" ++
         "wEAYx4KI6j0napCIbeb4i/2QDBs2Ebfs45X9jYGRd8JwrSBp8Q8sWvpgTw83lsieJ9QUf5IxCJw9Gk16mn41CQ==\n";
 
-    const parsed = try parseSignature(signature);
+    const parsed = try parseSignature(signature, .zig);
     try std.testing.expectEqualStrings(
         "timestamp:1785685616\tfile:zig-x86_64-linux-0.17.0-dev.1525+91c6d8a09.tar.xz\thashed",
         parsed.trusted_comment,
     );
 
     const signature_bytes = parsed.signature.toBytes();
-    var verifier = try parsed.global_signature.verifier(try zigPublicKey());
+    var verifier = try parsed.global_signature.verifier(try publicKey(.zig));
     verifier.update(&signature_bytes);
     verifier.update(parsed.trusted_comment);
     try verifier.verify();
