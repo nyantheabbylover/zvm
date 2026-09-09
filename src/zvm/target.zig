@@ -9,6 +9,11 @@ pub const archive_ext: []const u8 =
 pub const exe_name: []const u8 =
     if (builtin.target.os.tag == .windows) "zig.exe" else "zig";
 
+pub const zls_supported: bool = switch (builtin.target.os.tag) {
+    .linux, .macos, .windows => true,
+    else => false,
+};
+
 pub fn zlsExeName() []const u8 {
     return if (builtin.target.os.tag == .windows) "zls.exe" else "zls";
 }

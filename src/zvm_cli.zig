@@ -180,6 +180,17 @@ fn cmdInstall(
             std.process.exit(1);
         };
 
+    if (with_zls and !zvm.target.zls_supported) {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: cannot install ZLS: no prebuilt ZLS is available for this target\n",
+            .{},
+        );
+        try errw.writer.flush();
+        std.process.exit(1);
+    }
+
     const root_progress = std.Progress.start(ctx.io, .{ .root_name = "zvm install" });
     const result = zvm.resolve.ensureInstalled(
         ctx,
@@ -210,12 +221,21 @@ fn cmdInstall(
     if (with_zls) {
         const zls_result = zvm.zls.install(ctx, result.version, root_progress) catch |e| {
             root_progress.end();
-            try zvm.color.print(
-                errw,
-                .red,
-                "zvm: failed to install zls for zig {s}: {t}\n",
-                .{ result.version, e },
-            );
+            if (zvm.zls.installErrorHint(e)) |hint| {
+                try zvm.color.print(
+                    errw,
+                    .red,
+                    "zvm: could not install ZLS for Zig {s}: {s}\n",
+                    .{ result.version, hint },
+                );
+            } else {
+                try zvm.color.print(
+                    errw,
+                    .red,
+                    "zvm: failed to install ZLS for Zig {s}: {t}\n",
+                    .{ result.version, e },
+                );
+            }
             try errw.writer.flush();
 
             std.process.exit(1);
@@ -224,15 +244,15 @@ fn cmdInstall(
             try zvm.color.print(
                 out,
                 .dim,
-                "zls {s} is already installed\n",
+                "ZLS for Zig {s} is already installed\n",
                 .{zls_result.zig_version},
             );
         } else {
             try zvm.color.print(
                 out,
                 .green,
-                "installed zls {s}\n",
-                .{zls_result.zig_version},
+                "installed ZLS {s} for Zig {s}\n",
+                .{ zls_result.zls_version.?, zls_result.zig_version },
             );
         }
     }
@@ -316,7 +336,7 @@ fn cmdList(
         var has_zls = false;
         if (zls_dir) |zls_path| {
             defer ctx.gpa.free(zls_path);
-            has_zls = zvm.resolve.isInstalled(ctx, zls_path);
+            has_zls = zvm.zls.isInstalledAt(ctx, zls_path);
         }
         try zvm.color.print(out, .cyan, "  {s}", .{entry.name});
         if (has_zls)

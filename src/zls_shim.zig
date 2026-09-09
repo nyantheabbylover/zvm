@@ -42,6 +42,18 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
+    if (!zvm.target.zls_supported) {
+        try zvm.color.print(
+            errw,
+            .red,
+            "zvm: ZLS is not available for this target\n",
+            .{},
+        );
+        try errw.writer.flush();
+
+        std.process.exit(1);
+    }
+
     var override: ?[]const u8 = null;
     var passthrough_start: usize = 1;
     if (argv.len > 1 and zvm.version.looksLikeVersion(argv[1])) {
@@ -128,12 +140,21 @@ pub fn main(init: std.process.Init) !void {
         root_progress,
     ) catch |e| {
         root_progress.end();
-        try zvm.color.print(
-            errw,
-            .red,
-            "zvm: failed to install zls for zig {s}: {t}\n",
-            .{ install_result.version, e },
-        );
+        if (zvm.zls.installErrorHint(e)) |hint| {
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: could not install ZLS for Zig {s}: {s}\n",
+                .{ install_result.version, hint },
+            );
+        } else {
+            try zvm.color.print(
+                errw,
+                .red,
+                "zvm: failed to install ZLS for Zig {s}: {t}\n",
+                .{ install_result.version, e },
+            );
+        }
         try errw.writer.flush();
 
         std.process.exit(1);
