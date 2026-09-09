@@ -143,6 +143,8 @@ pub fn install(ctx: *Context, zig_version: []const u8, progress: std.Progress.No
 /// ZLS directory when multiple shims start at the same time.
 pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progress.Node) !InstallResult {
     try validateVersion(zig_version);
+    if (!target.zls_supported)
+        return error.ZlsTargetUnsupported;
 
     const zls_install_lock_name = try std.fmt.allocPrint(
         ctx.gpa,
