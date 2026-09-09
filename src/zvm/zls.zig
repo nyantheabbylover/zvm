@@ -128,12 +128,28 @@ pub fn install(ctx: *Context, zig_version: []const u8, progress: std.Progress.No
 }
 
 /// Like `install`, but for callers that already hold the version lock for
-/// `zig_version`. The `zls` shim holds it while the language server runs.
+/// `zig_version`. The `zls` shim holds the version lock while the language
+/// server runs. A separate installation lock serializes the mutation of the
+/// ZLS directory when multiple shims start at the same time.
 pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progress.Node) !InstallResult {
+    const zls_install_lock_name = try std.fmt.allocPrint(
+        ctx.gpa,
+        "{s}.zls.install",
+        .{zig_version},
+    );
+    defer ctx.gpa.free(zls_install_lock_name);
+    var zls_install_lock = try lock.acquire(
+        ctx.gpa,
+        ctx.io,
+        ctx.paths.locks,
+        zls_install_lock_name,
+    );
+    defer zls_install_lock.release(ctx.io);
+
     const zls_dir = try ctx.paths.zlsDir(ctx.gpa, zig_version);
 
     // An installed ZLS needs no API access at all.
-    if (isInstalled(ctx, zls_dir)) {
+    if (isZlsInstalled(ctx, zls_dir)) {
         debug.log("zls for {s} already installed at {s}", .{ zig_version, zls_dir });
 
         return .{ .zig_version = zig_version, .already_installed = true };
@@ -184,6 +200,21 @@ pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progr
     cleanup_node.end();
 
     return .{ .zig_version = zig_version, .already_installed = false };
+}
+
+fn isZlsInstalled(ctx: *Context, zls_dir: []const u8) bool {
+    const executable = std.fs.path.join(
+        ctx.gpa,
+        &.{ zls_dir, target.zlsExeName() },
+    ) catch
+        return false;
+    defer ctx.gpa.free(executable);
+
+    var file = Io.Dir.cwd().openFile(ctx.io, executable, .{}) catch
+        return false;
+    file.close(ctx.io);
+
+    return true;
 }
 
 /// The returned slices are allocated from `gpa`; free them with the same
@@ -335,6 +366,14 @@ test "installLocked reports an installed ZLS without resolving" {
     const versions = try std.fs.path.join(allocator, &.{ base, "versions" });
     const zls_dir = try std.fs.path.join(allocator, &.{ versions, "0.16.0", "zls" });
     try tmp.dir.createDirPath(std.testing.io, zls_dir);
+    const zls_executable = try std.fs.path.join(
+        allocator,
+        &.{ zls_dir, target.zlsExeName() },
+    );
+    try Io.Dir.cwd().writeFile(std.testing.io, .{
+        .sub_path = zls_executable,
+        .data = "placeholder",
+    });
 
     const paths = Paths{
         .base = base,
