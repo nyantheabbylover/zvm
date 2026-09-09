@@ -41,9 +41,9 @@ RELEASE_API="${ZVM_RELEASE_API:-https://git.xeondev.com/api/v1/repos/nyan/zvm/re
 
 system_name="$(uname -s)"
 case "$system_name" in
-  Linux) os="linux" ;;
-  Darwin) os="macos" ;;
-  FreeBSD) os="freebsd" ;;
+  Linux) os="linux"; zls_supported=1 ;;
+  Darwin) os="macos"; zls_supported=1 ;;
+  FreeBSD) os="freebsd"; zls_supported=0 ;;
   *)
     echo "error: unsupported operating system: $system_name" >&2
     exit 1
@@ -134,7 +134,13 @@ if [ "$build_from_source" = "1" ]; then
   (cd "$SCRIPT_DIR" && zig build -Doptimize=ReleaseFast)
 
   copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zig" "$bin_dir/zig"
-  copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zls" "$bin_dir/zls"
+  if [ "$zls_supported" = "1" ]; then
+    if [ ! -f "$SCRIPT_DIR/zig-out/bin/zls" ]; then
+      echo "error: the build did not produce the zls shim." >&2
+      exit 1
+    fi
+    copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zls" "$bin_dir/zls"
+  fi
   copy_installed_binary "$SCRIPT_DIR/zig-out/bin/zvm" "$bin_dir/zvm"
 else
   if [ "$force" = "0" ] && command -v zvm >/dev/null 2>&1; then
@@ -164,19 +170,32 @@ else
   zig_bin="$(find "$tmp/extracted" -type f -name 'zig' | head -n 1)"
   zls_bin="$(find "$tmp/extracted" -type f -name 'zls' | head -n 1)"
   zvm_bin="$(find "$tmp/extracted" -type f -name 'zvm' | head -n 1)"
-  if [ -z "$zig_bin" ] || [ -z "$zls_bin" ] || [ -z "$zvm_bin" ]; then
-    echo "error: release archive didn't contain the 'zig', 'zls', and 'zvm' binaries." >&2
+  if [ -z "$zig_bin" ] || [ -z "$zvm_bin" ] || { [ "$zls_supported" = "1" ] && [ -z "$zls_bin" ]; }; then
+    if [ "$zls_supported" = "1" ]; then
+      echo "error: release archive didn't contain the 'zig', 'zls', and 'zvm' binaries." >&2
+    else
+      echo "error: release archive didn't contain the 'zig' and 'zvm' binaries." >&2
+    fi
     exit 1
   fi
 
   copy_installed_binary "$zig_bin" "$bin_dir/zig"
-  copy_installed_binary "$zls_bin" "$bin_dir/zls"
+  if [ "$zls_supported" = "1" ]; then
+    copy_installed_binary "$zls_bin" "$bin_dir/zls"
+  fi
   copy_installed_binary "$zvm_bin" "$bin_dir/zvm"
 fi
 
-chmod +x "$bin_dir/zig" "$bin_dir/zls" "$bin_dir/zvm"
+chmod +x "$bin_dir/zig" "$bin_dir/zvm"
+if [ "$zls_supported" = "1" ]; then
+  chmod +x "$bin_dir/zls"
+fi
 
-echo "Installed zig + zls + zvm to $bin_dir"
+if [ "$zls_supported" = "1" ]; then
+  echo "Installed zig + zls + zvm to $bin_dir"
+else
+  echo "Installed zig + zvm to $bin_dir"
+fi
 
 path_available=0
 case ":$PATH:" in

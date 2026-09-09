@@ -26,18 +26,19 @@ it should pick the right compiler and let you get back to your project.
 
 ## What it does
 
-There are three executables:
+There are up to three executables:
 
 - `zig` is the transparent shim. This is the one you put on your PATH and use day to day.
-- `zls` does the same for the Zig language server: it picks the ZLS build
-   compatible with the project's Zig version, installs it if needed, and runs
-   it. Your editor just needs it on PATH.
+- `zls` does the same for the Zig language server on platforms with managed ZLS
+   support: it picks the ZLS build compatible with the project's Zig version,
+   installs it if needed, and runs it. Your editor just needs it on PATH.
 - `zvm` is the management CLI, not really required to be on PATH,
    but useful if you use it frequently.
 
 ZLS is available when the ZLS project publishes a prebuilt artifact for your
 platform. zvm itself still supports FreeBSD, but managed ZLS currently does not
-have an official FreeBSD build.
+have an official FreeBSD build, so the FreeBSD package does not install a `zls`
+shim that would hide an existing system ZLS.
 
 When the shim needs to choose a version, it checks these in order:
 
@@ -93,9 +94,11 @@ Windows:
 irm https://git.xeondev.com/nyan/zvm/raw/branch/main/install.ps1 | iex
 ```
 
-Both commands use the same cross-platform installer. It installs the `zig` and
-`zls` shims plus the `zvm` CLI into zvm's `bin` directory and offers to add that
-directory to your PATH.
+Both commands use the same cross-platform installer. On Linux, macOS, and
+Windows it installs the `zig` and `zls` shims plus the `zvm` CLI into zvm's
+`bin` directory. On FreeBSD it installs only `zig` and `zvm`, leaving any
+system-provided `zls` available. The installer offers to add that directory to
+your PATH.
 
 For unattended installs, use `-y` / `--yes` to accept the normal defaults,
 or choose PATH setup explicitly with `--add-to-path` or `--no-add-to-path`.
@@ -189,7 +192,7 @@ versions/            installed Zig toolchains
 versions/<v>/zls/    matching ZLS, when installed with --with-zls
 cache/               downloaded index and mirror metadata + temporary files
 config.json          default and most recently used versions
-bin/                 the zvm `zig`/`zls` shims and `zvm` CLI
+bin/                 zvm's `zig` and, where supported, `zls` shims plus the `zvm` CLI
 ```
 
 An installed version is only moved into `versions/` after extraction finishes,

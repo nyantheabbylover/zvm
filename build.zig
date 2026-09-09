@@ -2,6 +2,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const app_version = packageVersion(b);
+    const zls_supported = switch (target.result.os.tag) {
+        .linux, .macos, .windows => true,
+        else => false,
+    };
 
     const mod = b.addModule("zvm", .{
         .root_source_file = b.path("src/root.zig"),
@@ -42,19 +46,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(zvm_cli);
 
-    const zls_shim = b.addExecutable(.{
-        .name = "zls",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/zls_shim.zig"),
-            .target = target,
-            .optimize = optimize,
-            .strip = optimize != .Debug,
-            .imports = &.{
-                .{ .name = "zvm", .module = mod },
-            },
-        }),
-    });
-    b.installArtifact(zls_shim);
+    if (zls_supported) {
+        const zls_shim = b.addExecutable(.{
+            .name = "zls",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/zls_shim.zig"),
+                .target = target,
+                .optimize = optimize,
+                .strip = optimize != .Debug,
+                .imports = &.{
+                    .{ .name = "zvm", .module = mod },
+                },
+            }),
+        });
+        b.installArtifact(zls_shim);
+    }
 
     const run_step = b.step("run", "Run the zvm CLI");
     const run_cmd = b.addRunArtifact(zvm_cli);
