@@ -263,6 +263,10 @@ pub fn isInstalled(ctx: *Context, zig_version: []const u8) bool {
     const zls_dir = ctx.paths.zlsDir(ctx.gpa, zig_version) catch return false;
     defer ctx.gpa.free(zls_dir);
 
+    return isInstalledAt(ctx, zls_dir);
+}
+
+pub fn isInstalledAt(ctx: *Context, zls_dir: []const u8) bool {
     return isZlsInstalled(ctx, zls_dir);
 }
 
