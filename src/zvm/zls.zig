@@ -277,6 +277,7 @@ pub fn isInstalledAt(ctx: *Context, zls_dir: []const u8) bool {
 pub fn installErrorHint(err: anyerror) ?[]const u8 {
     return switch (err) {
         error.ZlsTargetUnsupported => "no prebuilt ZLS is available for this target",
+        error.ZlsNotReleased => "ZLS has not been released for this Zig version yet",
         error.ZlsVersionUnsupported => "no compatible ZLS release is available for this Zig version",
         error.ZlsApiError, error.ZlsIndexInvalid => "the ZLS release service returned invalid metadata",
         error.ZlsVerificationUnavailable => "the ZLS download could not be verified; use --no-verify to override",
@@ -313,10 +314,11 @@ fn parseResponse(gpa: std.mem.Allocator, body: []const u8) !Resolved {
         _ = root.get("message") orelse
             return error.ZlsIndexInvalid;
 
-        return if (code_number == 4)
-            error.ZlsVersionUnsupported
-        else
-            error.ZlsApiError;
+        return switch (code_number) {
+            3 => error.ZlsNotReleased,
+            4 => error.ZlsVersionUnsupported,
+            else => error.ZlsApiError,
+        };
     }
 
     if (root.get("error")) |_|
