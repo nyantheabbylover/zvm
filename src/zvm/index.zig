@@ -36,14 +36,20 @@ pub fn fetchIndexObject(gpa: std.mem.Allocator, io: Io, paths: Paths) !std.json.
         "index",
         ttl_seconds,
     );
-    const parsed = try std.json.parseFromSlice(
+    var parsed = try std.json.parseFromSlice(
         std.json.Value,
         gpa,
         body,
         .{},
     );
 
-    return parsed.value.object;
+    return switch (parsed.value) {
+        .object => |object| object,
+        else => {
+            parsed.deinit();
+            return error.IndexInvalid;
+        },
+    };
 }
 
 /// Resolves a requested version string ("master", "latest", or an exact version) to a concrete download,
@@ -97,28 +103,49 @@ fn latestStableKey(root: std.json.ObjectMap) ?[]const u8 {
 fn pickFromIndex(root: std.json.ObjectMap, key: []const u8) !?Resolved {
     const entry = root.get(key) orelse
         return null;
-    const obj = entry.object;
-    const version = if (obj.get("version")) |v| v.string else key;
-    try validateVersion(version);
+    const obj = switch (entry) {
+        .object => |object| object,
+        else => return error.IndexInvalid,
+    };
+    const version: []const u8 = if (obj.get("version")) |v| switch (v) {
+        .string => |string| string,
+        else => return error.IndexInvalid,
+    } else key;
+    validateVersion(version) catch
+        return error.IndexInvalid;
     const t = obj.get(target.native_target_string) orelse
         return null;
-    const tobj = t.object;
+    const tobj = switch (t) {
+        .object => |object| object,
+        else => return error.IndexInvalid,
+    };
     const tarball = tobj.get("tarball") orelse
         return null;
+    const tarball_url: []const u8 = switch (tarball) {
+        .string => |string| string,
+        else => return error.IndexInvalid,
+    };
 
     const size: ?u64 = blk: {
         const s = tobj.get("size") orelse
             break :blk null;
         break :blk switch (s) {
-            .integer => |i| if (i >= 0) @intCast(i) else null,
-            else => null,
+            .integer => |i| if (i >= 0) @intCast(i) else return error.IndexInvalid,
+            .string => |string| std.fmt.parseInt(u64, string, 10) catch return error.IndexInvalid,
+            .null => null,
+            else => return error.IndexInvalid,
         };
     };
+    const shasum: ?[]const u8 = if (tobj.get("shasum")) |s| switch (s) {
+        .string => |string| string,
+        .null => null,
+        else => return error.IndexInvalid,
+    } else null;
 
     return Resolved{
         .version = version,
-        .tarball_url = tarball.string,
-        .shasum = if (tobj.get("shasum")) |s| s.string else null,
+        .tarball_url = tarball_url,
+        .shasum = shasum,
         .size = size,
     };
 }
@@ -210,6 +237,34 @@ test "pickFromIndex selects the native artifact and its verification metadata" {
     try std.testing.expectEqualStrings("0.16.0", resolved.version);
     try std.testing.expectEqualStrings("https://whatever.invalid/zig.tar.xz", resolved.tarball_url);
     try std.testing.expectEqualStrings("abc123", resolved.shasum.?);
+    try std.testing.expectEqual(@as(?u64, 1234), resolved.size);
+}
+
+test "pickFromIndex parses an artifact size encoded as a decimal string" {
+    const fixture = try std.fmt.allocPrint(std.testing.allocator,
+        \\{{
+        \\  "0.16.0": {{
+        \\    "version": "0.16.0",
+        \\    "{s}": {{
+        \\      "tarball": "https://whatever.invalid/zig.tar.xz",
+        \\      "shasum": "abc123",
+        \\      "size": "1234"
+        \\    }}
+        \\  }}
+        \\}}
+    , .{target.native_target_string});
+    defer std.testing.allocator.free(fixture);
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        fixture,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const resolved = (try pickFromIndex(parsed.value.object, "0.16.0")) orelse
+        return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(?u64, 1234), resolved.size);
 }
 

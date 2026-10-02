@@ -471,6 +471,7 @@ fn ensureInstalledInner(
 pub fn installErrorHint(err: anyerror) ?[]const u8 {
     return switch (err) {
         error.VersionNotFound => "that version doesn't exist, or has been removed, this eventually happens to old, unlisted dev/master snapshots",
+        error.IndexInvalid => "the Zig download index returned invalid metadata",
         error.SignatureUnavailable => "its Minisign signature could not be retrieved; refusing an unverified download without interactive confirmation",
         error.InvalidArchiveSignature, error.InvalidGlobalSignature => "the download did not match Zig's official Minisign signature",
         else => null,
