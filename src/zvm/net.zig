@@ -61,7 +61,7 @@ pub fn get(gpa: std.mem.Allocator, io: Io, url: []const u8) !GetResult {
 
     return .{
         .status = res.head.status,
-        .body = try gpa.dupe(u8, collected.written()),
+        .body = try collected.toOwnedSlice(),
     };
 }
 
