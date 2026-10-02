@@ -220,6 +220,7 @@ pub fn installLocked(ctx: *Context, zig_version: []const u8, progress: std.Progr
         ctx.io,
         urls,
         archive_path,
+        resolved.size,
         if (ctx.skip_verification) null else resolved.shasum,
         minisign_signature,
         .zls,

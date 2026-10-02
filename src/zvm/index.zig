@@ -110,7 +110,7 @@ fn pickFromIndex(root: std.json.ObjectMap, key: []const u8) !?Resolved {
         const s = tobj.get("size") orelse
             break :blk null;
         break :blk switch (s) {
-            .integer => |i| @intCast(i),
+            .integer => |i| if (i >= 0) @intCast(i) else null,
             else => null,
         };
     };

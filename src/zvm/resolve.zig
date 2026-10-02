@@ -428,6 +428,7 @@ fn ensureInstalledInner(
         ctx.io,
         urls.items,
         archive_path,
+        resolved.size,
         if (ctx.skip_verification) null else resolved.shasum,
         minisign_signature,
         .zig,

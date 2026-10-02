@@ -3,12 +3,17 @@ pub fn download(
     io: Io,
     urls: []const []const u8,
     dest_path: []const u8,
+    expected_size: ?u64,
     expected_sha256_hex: ?[]const u8,
     minisign_signature: ?[]const u8,
     minisign_key: minisign.TrustedKey,
     label: []const u8,
     progress_parent: std.Progress.Node,
 ) !void {
+    if (expected_size) |size|
+        if (size > max_archive_bytes)
+            return error.DownloadTooLarge;
+
     const node = progress_parent.start(label, urls.len);
     defer node.end();
 
@@ -20,6 +25,7 @@ pub fn download(
             io,
             url,
             dest_path,
+            expected_size,
             expected_sha256_hex,
             minisign_signature,
             minisign_key,
@@ -45,6 +51,7 @@ fn attempt(
     io: Io,
     url: []const u8,
     dest_path: []const u8,
+    expected_size: ?u64,
     expected_sha256_hex: ?[]const u8,
     minisign_signature: ?[]const u8,
     minisign_key: minisign.TrustedKey,
@@ -68,7 +75,7 @@ fn attempt(
     if (res.head.status != .ok)
         return error.HttpRequestFailed;
 
-    const total: usize = @intCast(res.head.content_length orelse 0);
+    const total: usize = @intCast(res.head.content_length orelse expected_size orelse 0);
     const node = progress_parent.start(label, total);
     defer node.end();
 
@@ -91,19 +98,35 @@ fn attempt(
     var decompress: std.http.Decompress = undefined;
     const body = res.readerDecompressing(&t_buf, &decompress, d_buf);
 
-    var downloaded: usize = 0;
+    const size_limit = expected_size orelse max_archive_bytes;
+    var downloaded: u64 = 0;
     while (true) {
+        const remaining = size_limit - downloaded;
+        const read_limit: usize = @intCast(@min(
+            @as(u64, 1 << 16),
+            remaining + 1,
+        ));
         const n = body.stream(
             &fw.interface,
-            .limited(1 << 16),
+            .limited(read_limit),
         ) catch |err| switch (err) {
             error.EndOfStream => break,
             else => |e| return http_timeout.translateError(&req, e),
         };
-        downloaded += n;
-        node.setCompletedItems(downloaded);
+        const n_u64: u64 = @intCast(n);
+        if (n_u64 > remaining) {
+            if (expected_size != null)
+                return error.DownloadSizeMismatch;
+            return error.DownloadTooLarge;
+        }
+        downloaded += n_u64;
+        node.setCompletedItems(@intCast(downloaded));
     }
     try fw.interface.flush();
+
+    if (expected_size) |size|
+        if (downloaded != size)
+            return error.DownloadSizeMismatch;
 
     if (expected_sha256_hex) |expected| {
         const bytes = try cwd.readFileAlloc(io, dest_path, gpa, .limited(1 << 30));
@@ -128,3 +151,6 @@ const http_timeout = @import("http_timeout.zig");
 const minisign = @import("minisign.zig");
 
 const std = @import("std");
+
+/// Safety cap for archives whose release metadata does not provide a size.
+const max_archive_bytes: u64 = 1 << 30;
