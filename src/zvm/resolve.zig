@@ -28,6 +28,29 @@ pub const Context = struct {
     skip_verification: bool = false,
 };
 
+/// Lazily owns this command's single global progress display. Callers that run
+/// multiple install phases can pass the same session to each phase.
+pub const ProgressSession = struct {
+    root: ?std.Progress.Node = null,
+
+    pub fn start(self: *ProgressSession, io: Io, root_name: []const u8) std.Progress.Node {
+        if (self.root) |root|
+            return root;
+
+        const root = std.Progress.start(io, .{ .root_name = root_name });
+        self.root = root;
+
+        return root;
+    }
+
+    pub fn end(self: *ProgressSession) void {
+        var root = self.root orelse
+            return;
+        self.root = null;
+        root.end();
+    }
+};
+
 pub const Source = enum {
     override,
     project,
@@ -197,15 +220,32 @@ pub fn ensureInstalled(
     ctx: *Context,
     requested_version: []const u8,
 ) !InstallResult {
-    const result = try ensureInstalledInner(
+    var progress: ProgressSession = .{};
+    defer progress.end();
+
+    return ensureInstalledWithProgress(ctx, requested_version, &progress);
+}
+
+/// Like `ensureInstalled`, but leaves its progress session active so the
+/// caller can display additional work under the same root node.
+pub fn ensureInstalledWithProgress(
+    ctx: *Context,
+    requested_version: []const u8,
+    progress: *ProgressSession,
+) !InstallResult {
+    const result = ensureInstalledInner(
         ctx,
         requested_version,
         false,
+        progress,
         .{
             .root_name = "zvm install",
             .announce_resolve = true,
         },
-    );
+    ) catch |err| {
+        progress.end();
+        return err;
+    };
 
     return result.install;
 }
@@ -214,10 +254,14 @@ pub fn ensureInstalledForUse(
     ctx: *Context,
     requested_version: []const u8,
 ) !UseResult {
+    var progress: ProgressSession = .{};
+    defer progress.end();
+
     const result = try ensureInstalledInner(
         ctx,
         requested_version,
         true,
+        &progress,
         .{
             .root_name = "zvm",
             .announce_resolve = false,
@@ -248,6 +292,7 @@ fn ensureInstalledInner(
     ctx: *Context,
     requested_version: []const u8,
     retain_lock: bool,
+    progress: *ProgressSession,
     display: DisplayOptions,
 ) !EnsureResult {
     try validateVersion(requested_version);
@@ -348,12 +393,11 @@ fn ensureInstalledInner(
     } else null;
     const verified = ctx.skip_verification or resolved.shasum != null or minisign_signature != null;
 
-    // The verification decision is final here, so start the progress display
-    // only now: an active display would redraw stderr over the confirmation
-    // prompt shown above, and std.Progress cannot be paused or restarted
-    // once it has ended.
-    const root = std.Progress.start(ctx.io, .{ .root_name = display.root_name });
-    errdefer root.end();
+    // Start progress only after verification so it cannot redraw over the
+    // confirmation prompt. The caller keeps this one global root alive across
+    // every install phase in the command.
+    const root = progress.start(ctx.io, display.root_name);
+    errdefer progress.end();
 
     const install_tmp = try std.fs.path.join(ctx.gpa, &.{ ctx.paths.tmp, resolved.version });
     const scratch = try std.fs.path.join(ctx.gpa, &.{ install_tmp, "extract" });
@@ -405,7 +449,6 @@ fn ensureInstalledInner(
     const cleanup_node = root.start("cleaning up", 0);
     retry.deleteTree(ctx.io, Io.Dir.cwd(), install_tmp) catch {};
     cleanup_node.end();
-    root.end();
 
     if (retain_lock) {
         try version_lock.?.downgrade(ctx.io);
